@@ -4,7 +4,15 @@ import Foundation
 import ImageIO
 import Accelerate
 
-/// Capture → (dedupe) → scale → JPEG → stdout, at most `fps` frames a second.
+/// Capture → (dedupe) → scale → rotate → JPEG → stdout, at most `fps` frames
+/// a second.
+///
+/// The simulator framebuffer never rotates: in landscape the UI is drawn
+/// sideways inside the portrait buffer. Frames are rotated here, by the
+/// device orientation OxiMux commanded, so OxiMux paints them as-is (GPUI
+/// cannot rotate an image). Measured on Xcode 26.3: orientation 3 puts the
+/// UI's top at the buffer's right edge (rotate 90° counter-clockwise), 4 at
+/// its left edge (90° clockwise), 2 upside down (180°).
 ///
 /// `FrameCapture` (upstream) calls back on its own queue for every
 /// simulator frame plus a 5 fps idle re-emit. We keep only the newest buffer
@@ -24,16 +32,20 @@ final class FrameStream: @unchecked Sendable {
     private var fps: Double
     private var lastSent: CVPixelBuffer?
     private var lastSize: (Int, Int) = (0, 0)
+    private var orientation: UInt32 = 1
     private let quality: Double
     private let rateTicks = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
 
-    init(udid: String, scale: Double, fps: Double, quality: Double) {
+    init(udid: String, scale: Double, fps: Double, quality: Double, orientation: UInt32) {
         self.udid = udid
         self.scale = scale
         self.fps = fps
         self.quality = quality
+        self.orientation = (1...4).contains(orientation) ? orientation : 1
     }
 
+    /// Start capturing. Frames are buffered but not encoded until
+    /// `startEncoding()`, so nothing reaches stdout before `ready`.
     func start() async throws {
         try await capture.start(deviceUDID: udid) { [weak self] buffer, _ in
             self?.offer(buffer)
@@ -51,6 +63,10 @@ final class FrameStream: @unchecked Sendable {
             }
         }
         rateTicks.continuation.yield()
+    }
+
+    /// Begin emitting `size` and frames. Called once, right after `ready`.
+    func startEncoding() {
         let thread = Thread { [weak self] in self?.encodeLoop() }
         thread.name = "oximux-sim-encode"
         thread.qualityOfService = .userInteractive
@@ -73,10 +89,11 @@ final class FrameStream: @unchecked Sendable {
         syncCaptureRate()
     }
 
-    func configure(scale: Double?, fps: Double?) {
+    func configure(scale: Double?, fps: Double?, orientation: UInt32?) {
         cond.lock()
         if let scale, scale > 0, scale <= 1 { self.scale = scale }
         if let fps, fps >= 1, fps <= 60 { self.fps = fps }
+        if let orientation, (1...4).contains(orientation) { self.orientation = orientation }
         forceNext = true
         cond.unlock()
         syncCaptureRate()
@@ -94,13 +111,15 @@ final class FrameStream: @unchecked Sendable {
         rateTicks.continuation.yield()
     }
 
-    /// The current screen as a full-resolution PNG, for screenshots.
+    /// The current screen as a full-resolution PNG, rotated for display like
+    /// the stream, for screenshots.
     func snapshotPNG() -> Data? {
         cond.lock()
         let buffer = latest ?? lastSent
+        let orientation = self.orientation
         cond.unlock()
         guard let buffer else { return nil }
-        return Self.encodeImage(buffer, scale: 1, type: "public.png", quality: nil)?.0
+        return Self.encodeImage(buffer, scale: 1, orientation: orientation, type: "public.png", quality: nil)?.0
     }
 
     private func encodeLoop() {
@@ -129,13 +148,15 @@ final class FrameStream: @unchecked Sendable {
         let force = forceNext
         forceNext = false
         let scale = self.scale
+        let orientation = self.orientation
         let previous = lastSent
         cond.unlock()
 
         if !force, let previous, Self.samePixels(previous, buffer) { return }
         // Deadline pacing: sleeping overshoot doesn't accumulate into a lower rate.
         due = max(due + interval, ProcessInfo.processInfo.systemUptime - interval)
-        guard let (jpeg, outW, outH) = Self.encodeImage(buffer, scale: scale, type: "public.jpeg", quality: quality)
+        guard let (jpeg, outW, outH) = Self.encodeImage(
+            buffer, scale: scale, orientation: orientation, type: "public.jpeg", quality: quality)
         else { return }
 
         let size = (CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer))
@@ -168,10 +189,13 @@ final class FrameStream: @unchecked Sendable {
         return memcmp(pa, pb, CVPixelBufferGetBytesPerRow(a) * CVPixelBufferGetHeight(a)) == 0
     }
 
-    /// Encode `buffer` (BGRA) at `scale`, without copying the full-size frame:
-    /// the CGImage wraps the locked pixel memory directly, and downscaling is
-    /// one vImage (NEON) pass into a small scratch buffer.
-    private static func encodeImage(_ buffer: CVPixelBuffer, scale: Double, type: String, quality: Double?) -> (Data, Int, Int)? {
+    /// Encode `buffer` (BGRA) at `scale`, rotated for `orientation`, without
+    /// copying the full-size frame: the CGImage wraps the locked pixel memory
+    /// (or a small scratch buffer) directly; downscaling and rotation are one
+    /// vImage (NEON) pass each.
+    private static func encodeImage(
+        _ buffer: CVPixelBuffer, scale: Double, orientation: UInt32, type: String, quality: Double?
+    ) -> (Data, Int, Int)? {
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
         guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
@@ -180,7 +204,8 @@ final class FrameStream: @unchecked Sendable {
             width: vImagePixelCount(CVPixelBufferGetWidth(buffer)),
             rowBytes: CVPixelBufferGetBytesPerRow(buffer))
         var scratch: UnsafeMutableRawPointer?
-        defer { free(scratch) }
+        var rotated: UnsafeMutableRawPointer?
+        defer { free(scratch); free(rotated) }
         var pixels = src
         if scale < 0.999 {
             let w = max(1, Int((Double(src.width) * scale).rounded()))
@@ -190,6 +215,18 @@ final class FrameStream: @unchecked Sendable {
             guard vImageScale_ARGB8888(&src, &pixels, nil, vImage_Flags(kvImageNoFlags)) == kvImageNoError else {
                 return nil
             }
+        }
+        if let turn = rotation(for: orientation) {
+            let quarter = turn != UInt8(kRotate180DegreesClockwise)
+            let w = Int(quarter ? pixels.height : pixels.width)
+            let h = Int(quarter ? pixels.width : pixels.height)
+            rotated = malloc(w * 4 * h)
+            var dest = vImage_Buffer(data: rotated, height: vImagePixelCount(h), width: vImagePixelCount(w), rowBytes: w * 4)
+            var black: [UInt8] = [0, 0, 0, 0xFF]
+            guard vImageRotate90_ARGB8888(&pixels, &dest, turn, &black, vImage_Flags(kvImageNoFlags)) == kvImageNoError else {
+                return nil
+            }
+            pixels = dest
         }
         let size = pixels.rowBytes * Int(pixels.height)
         guard let provider = CGDataProvider(dataInfo: nil, data: pixels.data, size: size, releaseData: { _, _, _ in }),
@@ -202,6 +239,17 @@ final class FrameStream: @unchecked Sendable {
         // The image borrows `pixels`; encode before the lock/scratch go away.
         guard let data = encode(image, type: type, quality: quality) else { return nil }
         return (data, image.width, image.height)
+    }
+
+    /// The vImage rotation that turns the portrait framebuffer into the
+    /// display image for `orientation`, or nil for portrait.
+    static func rotation(for orientation: UInt32) -> UInt8? {
+        switch orientation {
+        case 2: return UInt8(kRotate180DegreesClockwise)
+        case 3: return UInt8(kRotate90DegreesCounterClockwise)
+        case 4: return UInt8(kRotate90DegreesClockwise)
+        default: return nil
+        }
     }
 
     private static func encode(_ image: CGImage, type: String, quality: Double?) -> Data? {

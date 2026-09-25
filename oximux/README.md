@@ -3,21 +3,19 @@
 This branch (`oximux`) of the `nhtera/serve-sim` fork builds **`oximux-sim-helper`**. It is the child process the [OxiMux](https://github.com/nhtera/OxiMux) desktop app uses to stream and drive one iOS Simulator. It reuses upstream serve-sim's native Swift (Apache-2.0, © Evan Bacon), minus the Node binding.
 
 ## Contract
-- **stdio only.** It opens no sockets.
-- **Output (stdout):** `[u8 kind][u32 LE len][payload]`.
-  - kind 1 is a frame: `[u32 LE w][u32 LE h][JPEG]`
-  - kind 2 is a JSON event: `ready`, `size`, `response`, `error`
-- **Input (stdin):** `[u32 LE len][JSON command]`, at most 1 MiB each.
-- **Lifetime:** it exits on stdin EOF, and never outlives its parent.
-- **Stray output:** upstream code's `print` output is moved to stderr, so it can't corrupt the frame stream.
-- **Signing:** hardened runtime, no entitlements. OxiMux re-signs the binary inside its own notarized app bundle. The raw release binary is not meant for standalone use.
+The full wire spec is **[`PROTOCOL.md`](PROTOCOL.md)**: protocol version 1, announced in the first `hello` event.
+- **stdio only.** It opens no sockets. Framed JPEG frames and JSON events go out on stdout; framed JSON commands come in on stdin.
+- **Frames** are rotated for display by the device orientation. Touches are in portrait-normalized coordinates.
+- **Lifetime:** it exits on stdin EOF and never outlives its parent.
+- **Conformance:** `--conformance` needs no simulator. It lets OxiMux test its protocol code against the shipped binary.
+- **Signing:** hardened runtime, no entitlements. OxiMux re-signs the binary inside its own notarized app bundle.
 
 ## Layout
 - `/Package.swift`: root manifest. It is an added file; upstream has no root manifest. It builds one module from `oximux/Sources/oximux-sim-helper`.
   - `Upstream` in that folder is a **committed symlink** to `packages/serve-sim/Sources/SimNative`.
   - `sim-module.swift` and `build.sh` are excluded.
-- `oximux/Sources/oximux-sim-helper/`: our code (`main`, `Commands`, `FrameStream`, `Wire`, `Version`).
-- `oximux/Tests/HelperTests/`: golden framing tests.
+- `oximux/Sources/oximux-sim-helper/`: our code (`main`, `Protocol`, `Commands`, `FrameStream`, `Wire`, `Conformance`, `Version`).
+- `oximux/Tests/HelperTests/`: golden framing and command-parser tests.
 - `oximux/PATCHES.md`: the only changes to upstream files.
 
 ## Build and test (Swift ≥ 6.1, Xcode 26 recommended)
