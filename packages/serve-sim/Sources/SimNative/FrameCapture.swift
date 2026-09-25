@@ -233,6 +233,9 @@ actor FrameCapture {
     }
 
     private func onIdleTimerTick() {
+        // OXIMUX PATCH 1: a paused capture neither re-emits nor self-heals
+        // (re-wiring every second while hidden would defeat the pause).
+        if capturePaused { return }
         let now = ContinuousClock.now
         guard (now - self.lastCaptureTime) >= Self.idleInterval else { return }
         self.captureFrame(force: true)
@@ -253,7 +256,30 @@ actor FrameCapture {
 
     // MARK: - Frame capture
 
+    // OXIMUX PATCH 1 (see oximux/PATCHES.md): rate-limit and pause BEFORE the
+    // full-frame Photocopier copy. Upstream copies on every simulator frame
+    // callback (up to 60 Hz) regardless of how fast the consumer encodes,
+    // which was most of the helper's CPU. A throttled frame schedules one
+    // trailing capture so the settled final frame is never lost.
+    private var minCaptureInterval: ContinuousClock.Duration = .zero
+    private var capturePaused = false
+    private var lastCopyTime: ContinuousClock.Instant?
+    private var trailingCapture: Task<Void, Never>?
+
+    func setCaptureRate(maxFPS: Double, paused: Bool) {
+        minCaptureInterval = maxFPS > 0 ? .milliseconds(Int(1000 / maxFPS)) : .zero
+        capturePaused = paused
+        if !paused { captureFrame(force: true) }
+    }
+
+    private func runTrailingCapture() {
+        trailingCapture = nil
+        captureFrame()
+    }
+    // END OXIMUX PATCH 1
+
     private func captureFrame(force: Bool = false) {
+        if capturePaused { return } // OXIMUX PATCH 1
         guard let desc = pickBestDescriptor() else { return }
 
         let surfSel = NSSelectorFromString("framebufferSurface")
@@ -269,6 +295,24 @@ actor FrameCapture {
         let seed = IOSurfaceGetSeed(surface)
         let seedChanged = lastSeeds[key] != seed
         if frameCount > 0, !seedChanged, !force { return }
+        // OXIMUX PATCH 1: throttle before recording the seed, so the trailing
+        // capture still sees this change.
+        if !force, let last = lastCopyTime, minCaptureInterval > .zero {
+            let elapsed = ContinuousClock.now - last
+            if elapsed < minCaptureInterval {
+                if trailingCapture == nil {
+                    let wait = minCaptureInterval - elapsed
+                    trailingCapture = Task { [weak self] in
+                        try? await Task.sleep(for: wait)
+                        // A cancelled sleep only throws; `try?` swallows it.
+                        guard !Task.isCancelled else { return }
+                        await self?.runTrailingCapture()
+                    }
+                }
+                return
+            }
+        }
+        lastCopyTime = .now
         lastSeeds[key] = seed
 
         let w = IOSurfaceGetWidth(surface)
@@ -304,6 +348,11 @@ actor FrameCapture {
     func stop() {
         idleTimer?.cancel()
         idleTimer = nil
+        trailingCapture?.cancel() // OXIMUX PATCH 1
+        trailingCapture = nil     // OXIMUX PATCH 1
+        lastCopyTime = nil        // OXIMUX PATCH 1
+        capturePaused = false     // OXIMUX PATCH 1
+        minCaptureInterval = .zero // OXIMUX PATCH 1
 
         let unregSel = NSSelectorFromString("unregisterScreenCallbacksWithUUID:")
         for desc in descriptors {
