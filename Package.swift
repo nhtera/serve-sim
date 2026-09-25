@@ -14,13 +14,12 @@
 // purely additive file that never conflicts on rebase. Upstream's own
 // package (packages/serve-sim/Package.swift) is untouched.
 //
-// Upstream sources and ours share ONE module so upstream types stay
+// Upstream sources and ours share ONE module (via the committed symlink
+// oximux/Sources/oximux-sim-helper/Upstream) so upstream types stay
 // `internal` and unpatched. Swift 6.1+ is required (upstream uses 6.1
 // syntax); Swift 5 language mode matches upstream.
 
 import PackageDescription
-
-let upstreamNative = "packages/serve-sim/Sources/SimNative"
 
 let package = Package(
     name: "oximux-sim-helper",
@@ -36,14 +35,13 @@ let package = Package(
         .executableTarget(
             name: "oximux-sim-helper",
             dependencies: ["SimNativeSupport"],
-            path: ".",
+            // `Upstream` is a committed symlink to upstream's
+            // packages/serve-sim/Sources/SimNative, so the target has a
+            // narrow root of its own instead of scanning the whole repo.
+            path: "oximux/Sources/oximux-sim-helper",
             exclude: [
-                "\(upstreamNative)/sim-module.swift",
-                "\(upstreamNative)/build.sh",
-            ],
-            sources: [
-                upstreamNative,
-                "oximux/Sources/oximux-sim-helper",
+                "Upstream/sim-module.swift",
+                "Upstream/build.sh",
             ]
         ),
         .testTarget(

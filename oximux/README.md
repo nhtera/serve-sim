@@ -13,9 +13,9 @@ This branch (`oximux`) of the `nhtera/serve-sim` fork builds **`oximux-sim-helpe
 - **Signing:** hardened runtime, no entitlements. OxiMux re-signs the binary inside its own notarized app bundle. The raw release binary is not meant for standalone use.
 
 ## Layout
-- `/Package.swift`: root manifest. It is an added file; upstream has no root manifest. It builds one module from:
-  - `packages/serve-sim/Sources/SimNative`, excluding `sim-module.swift` and `build.sh`
-  - `oximux/Sources/oximux-sim-helper`
+- `/Package.swift`: root manifest. It is an added file; upstream has no root manifest. It builds one module from `oximux/Sources/oximux-sim-helper`.
+  - `Upstream` in that folder is a **committed symlink** to `packages/serve-sim/Sources/SimNative`.
+  - `sim-module.swift` and `build.sh` are excluded.
 - `oximux/Sources/oximux-sim-helper/`: our code (`main`, `Commands`, `FrameStream`, `Wire`, `Version`).
 - `oximux/Tests/HelperTests/`: golden framing tests.
 - `oximux/PATCHES.md`: the only changes to upstream files.

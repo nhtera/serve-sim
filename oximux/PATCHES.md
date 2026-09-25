@@ -5,7 +5,7 @@ Everything else on the `oximux` branch is **additive**, meaning it only adds fil
 - `oximux/`
 - `.github/workflows/oximux-helper.yml`
 
-These are the only commits that touch upstream files. Keep each one small and in its own commit, and re-check each after a rebase. CI fails if `git diff <upstream-base> -- packages/` touches a file that isn't listed here.
+These are the only commits that touch upstream files. Keep each one small and in its own commit, and re-check each after a rebase. CI fails if the files that differ from the upstream base, ignoring our additive files, aren't exactly the ones listed in the table below. That catches an undocumented patch as well as a stale row.
 
 Upstream base: see `oximux/upstream-base`.
 
