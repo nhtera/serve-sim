@@ -46,7 +46,9 @@ Wire.sendEvent(["event": "hello", "proto": protocolVersion, "version": helperVer
 guard let udid = argValue("--udid"), !udid.isEmpty else {
     fatal("bad_args", "usage: oximux-sim-helper --udid <UDID> [--scale S] [--fps N] [--quality Q] [--orientation 1-4]")
 }
-let scale = argNumber("--scale", 0.05...1, 1.0)
+// Clamped rather than defaulted: a too-small scale must not silently become
+// full resolution, the most expensive setting.
+let scale = min(1, max(0.05, argValue("--scale").flatMap(Double.init).flatMap { $0.isFinite ? $0 : nil } ?? 1))
 let fps = argNumber("--fps", 1...60, 30)
 let quality = argNumber("--quality", 0.1...1, 0.7)
 let orientation = UInt32(argNumber("--orientation", 1...4, 1))

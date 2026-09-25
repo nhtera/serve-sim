@@ -24,6 +24,10 @@ final class FrameStream: @unchecked Sendable {
     private let capture = FrameCapture()
     private let udid: String
     private let cond = NSCondition()
+    /// Serializes "orientation changed" against frame emission, so every frame
+    /// written after the `orientation` event carries the new rotation and none
+    /// written before it does. Held while writing; never inside `cond`.
+    private let emitLock = NSLock()
     // Guarded by `cond`.
     private var latest: CVPixelBuffer?
     private var paused = false
@@ -89,13 +93,19 @@ final class FrameStream: @unchecked Sendable {
         syncCaptureRate()
     }
 
+    /// Apply new stream settings. A new orientation also emits the
+    /// `orientation` event, ordered against frames (see `emitLock`).
     func configure(scale: Double?, fps: Double?, orientation: UInt32?) {
+        emitLock.lock()
         cond.lock()
         if let scale, scale > 0, scale <= 1 { self.scale = scale }
         if let fps, fps >= 1, fps <= 60 { self.fps = fps }
-        if let orientation, (1...4).contains(orientation) { self.orientation = orientation }
+        let rotated = orientation.map { (1...4).contains($0) } ?? false
+        if let orientation, rotated { self.orientation = orientation }
         forceNext = true
         cond.unlock()
+        if let orientation, rotated { Wire.sendEvent(["event": "orientation", "value": orientation]) }
+        emitLock.unlock()
         syncCaptureRate()
     }
 
@@ -159,6 +169,13 @@ final class FrameStream: @unchecked Sendable {
             buffer, scale: scale, orientation: orientation, type: "public.jpeg", quality: quality)
         else { return }
 
+        emitLock.lock()
+        defer { emitLock.unlock() }
+        cond.lock()
+        let stale = self.orientation != orientation
+        if stale { forceNext = true } // re-encode this screen with the new rotation
+        cond.unlock()
+        if stale { return }
         let size = (CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer))
         if size != lastSize {
             lastSize = size
@@ -211,6 +228,7 @@ final class FrameStream: @unchecked Sendable {
             let w = max(1, Int((Double(src.width) * scale).rounded()))
             let h = max(1, Int((Double(src.height) * scale).rounded()))
             scratch = malloc(w * 4 * h)
+            guard scratch != nil else { return nil }
             pixels = vImage_Buffer(data: scratch, height: vImagePixelCount(h), width: vImagePixelCount(w), rowBytes: w * 4)
             guard vImageScale_ARGB8888(&src, &pixels, nil, vImage_Flags(kvImageNoFlags)) == kvImageNoError else {
                 return nil
@@ -221,6 +239,7 @@ final class FrameStream: @unchecked Sendable {
             let w = Int(quarter ? pixels.height : pixels.width)
             let h = Int(quarter ? pixels.width : pixels.height)
             rotated = malloc(w * 4 * h)
+            guard rotated != nil else { return nil }
             var dest = vImage_Buffer(data: rotated, height: vImagePixelCount(h), width: vImagePixelCount(w), rowBytes: w * 4)
             var black: [UInt8] = [0, 0, 0, 0xFF]
             guard vImageRotate90_ARGB8888(&pixels, &dest, turn, &black, vImage_Flags(kvImageNoFlags)) == kvImageNoError else {

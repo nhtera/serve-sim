@@ -20,6 +20,10 @@ final class Commands: @unchecked Sendable {
     private let hid = HIDInjector()
     private let stream: FrameStream
     private let hidReady: Task<Void, Error>
+    /// Detached requests (screenshots, AX dumps) in flight; each holds a full
+    /// frame or tree in memory, so they are capped like the input queue.
+    private let requests = InFlight(limit: 8)
+    private static let busy = "too many screenshot/AX requests in flight; retry shortly"
 
     init(udid: String, stream: FrameStream) {
         self.udid = udid
@@ -84,10 +88,9 @@ final class Commands: @unchecked Sendable {
                 guard await hid.sendOrientation(orientation: orientation) else {
                     return Self.fail(id, "orientation failed")
                 }
-                // Frames are rotated for display from now on; tell OxiMux so
-                // its pointer mapping and layout switch in the same beat.
+                // Frames are rotated for display from now on; the stream
+                // emits the `orientation` event, ordered against frames.
                 stream.configure(scale: scale, fps: fps, orientation: orientation)
-                Wire.sendEvent(["event": "orientation", "value": orientation])
             } else {
                 stream.configure(scale: scale, fps: fps, orientation: nil)
             }
@@ -97,15 +100,21 @@ final class Commands: @unchecked Sendable {
         case .resume:
             stream.setPaused(false)
         case .screenshot:
-            let stream = self.stream
+            guard requests.acquire() else { return Self.fail(id, Self.busy) }
+            let (stream, requests) = (self.stream, self.requests)
             Task.detached {
+                defer { requests.release() }
                 guard let png = stream.snapshotPNG() else { return Self.fail(id, "no frame yet") }
                 Self.reply(id, ["png_base64": png.base64EncodedString()])
             }
         case .axDescribe, .axFrontmost:
-            let udid = self.udid
+            guard requests.acquire() else { return Self.fail(id, Self.busy) }
+            let (udid, requests) = (self.udid, self.requests)
             let frontmost = command == .axFrontmost
-            Task.detached { await Self.axQuery(udid: udid, id: id, frontmost: frontmost) }
+            Task.detached {
+                defer { requests.release() }
+                await Self.axQuery(udid: udid, id: id, frontmost: frontmost)
+            }
         case .memoryWarning:
             await hid.simulateMemoryWarning()
             Self.reply(id, ["ok": true])
@@ -129,6 +138,23 @@ final class Commands: @unchecked Sendable {
         switch result {
         case .success(let data): if let id { Wire.sendResponse(id: id, rawResult: data) }
         case .failure(let error): fail(id, error.localizedDescription)
+        }
+    }
+
+    /// A counting limit for detached requests.
+    final class InFlight: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        private let limit: Int
+        init(limit: Int) { self.limit = limit }
+        func acquire() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            guard count < limit else { return false }
+            count += 1
+            return true
+        }
+        func release() {
+            lock.lock(); count -= 1; lock.unlock()
         }
     }
 

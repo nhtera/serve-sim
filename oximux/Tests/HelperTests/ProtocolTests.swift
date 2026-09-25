@@ -62,6 +62,7 @@ final class ProtocolTests: XCTestCase {
         XCTAssertFalse(ParsedCommand.configure(scale: 0.5, fps: nil, orientation: nil).needsHID)
         XCTAssertFalse(ParsedCommand.screenshot.needsHID)
         XCTAssertFalse(ParsedCommand.axDescribe.needsHID)
+        XCTAssertTrue(ParsedCommand.memoryWarning.needsHID)
     }
 
     func testCanonicalOmitsAbsentOptionals() {

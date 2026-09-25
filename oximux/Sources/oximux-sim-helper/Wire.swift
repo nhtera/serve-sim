@@ -5,7 +5,11 @@ import Foundation
 ///
 /// Outbound framing: `[u8 kind][u32 LE len][payload]`.
 /// - `Kind.frame`: `[u32 LE width][u32 LE height][JPEG bytes]`
-/// - `Kind.event`: UTF-8 JSON object (`ready`, `size`, `response`, `error`, `log`)
+/// - `Kind.event`: UTF-8 JSON object (see oximux/PROTOCOL.md)
+///
+/// No message exceeds `maxMessageBytes`: OxiMux treats a larger length prefix
+/// as a corrupt stream and ends the session, so an oversized reply becomes an
+/// `ok: false` reply instead, and an oversized frame is dropped.
 ///
 /// Inbound framing: `[u32 LE len][UTF-8 JSON object]`.
 enum Wire {
@@ -32,11 +36,22 @@ enum Wire {
     }
 
     static func sendFrame(width: Int, height: Int, jpeg: Data) {
-        send(.frame, framePayload(width: width, height: height, jpeg: jpeg))
+        let payload = framePayload(width: width, height: height, jpeg: jpeg)
+        guard payload.count <= maxMessageBytes else {
+            fputs("[oximux] dropped a \(payload.count)-byte frame (over the message limit)\n", stderr)
+            return
+        }
+        send(.frame, payload)
     }
+
+    /// The protocol's per-message cap (OxiMux's `MAX_MESSAGE_BYTES`).
+    static let maxMessageBytes = 16 << 20
 
     static func sendEvent(_ object: [String: Any]) {
         guard let data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        if data.count > maxMessageBytes {
+            return sendTooLarge(id: object["id"] as? Int, bytes: data.count)
+        }
         send(.event, data)
     }
 
@@ -46,7 +61,16 @@ enum Wire {
         var data = Data("{\"event\":\"response\",\"id\":\(id),\"ok\":true,\"result\":".utf8)
         data.append(rawResult)
         data.append(Data("}".utf8))
+        if data.count > maxMessageBytes { return sendTooLarge(id: id, bytes: data.count) }
         send(.event, data)
+    }
+
+    /// A reply that would break the cap: fail it by id (or report it) instead.
+    private static func sendTooLarge(id: Int?, bytes: Int) {
+        let message = "reply of \(bytes) bytes exceeds the \(maxMessageBytes)-byte message limit"
+        let event: [String: Any] = id.map { ["event": "response", "id": $0, "ok": false, "error": message] }
+            ?? ["event": "error", "message": message]
+        if let data = try? JSONSerialization.data(withJSONObject: event) { send(.event, data) }
     }
 
     /// `[u8 kind][u32 LE len]` — the outbound message header. Pure, so the

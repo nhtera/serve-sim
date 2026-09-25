@@ -12,11 +12,15 @@ oximux-sim-helper --udid <UDID> [--scale 0.05-1] [--fps 1-60] [--quality 0.1-1] 
 oximux-sim-helper --conformance
 oximux-sim-helper --version        # prints "oximux-sim-helper <version>" (plain text) and exits
 ```
-- **Defaults:** `--scale 1`, `--fps 30`, `--quality 0.7`, `--orientation 1`. An out-of-range value falls back to its default.
+- **Defaults:** `--scale 1`, `--fps 30`, `--quality 0.7`, `--orientation 1`.
+- **Out-of-range values:** `--scale` is **clamped** into range, so a tiny scale never silently becomes full resolution. Other out-of-range values fall back to their default.
 - **Exit codes:** `0` on stdin EOF, `3` after a `fatal` event.
 
 ## Outbound: helper → OxiMux (stdout)
 Every message is `[u8 kind][u32 LE length][payload]`, and `length` never exceeds 16 MiB.
+- OxiMux treats a larger prefix as a corrupt stream.
+- A reply that would exceed the cap is sent as `ok: false`, with an error naming its size. A full-resolution PNG screenshot of a large iPad can do this; fall back to `simctl io screenshot`.
+- An oversized frame is dropped.
 
 | kind | payload |
 |---|---|
@@ -30,7 +34,7 @@ Events:
 | `hello` | `proto` (int), `version` (string), `xcode` (developer dir) | **Always the first message.** |
 | `ready` | `udid`, `pid`, `orientation` | Capture is running. It is sent **before** any `size` or frame. |
 | `size` | `width`, `height` | Framebuffer size in pixels. It is always **portrait** and unscaled. Sent before the first frame and whenever it changes. |
-| `orientation` | `value` (1–4) | A commanded orientation has taken effect. Frames that follow are rotated for it. |
+| `orientation` | `value` (1–4) | A commanded orientation has taken effect. The ordering is strict: every frame after this event is rotated for the new orientation, and no frame before it is. |
 | `response` | `id`, `ok: true`, `result` (JSON) | Success reply to a command that carried an `id`. |
 | `response` | `id`, `ok: false`, `error` (string) | Failure reply to a command that carried an `id`. |
 | `error` | `message` | A non-fatal problem with no `id` to answer: a malformed body, a rejected command sent without an id, or a full queue. |
@@ -68,7 +72,7 @@ Every command is `{"cmd": "<name>", "id"?: int, …}`. A command that returns da
 
 **Validation.** Coordinates are clamped to 0–1, non-finite numbers become 0, and integer codes are clamped into u32. JSON booleans are not numbers. For `configure`, an out-of-range `scale` or `fps` is **ignored**, while an out-of-range `orientation` is **rejected**. An unknown `cmd`, `phase` or button is rejected.
 
-**Ordering.** Input commands run in arrival order on a single queue, which holds at most 512 commands; beyond that, commands are dropped with an error. `screenshot`, `ax_describe` and `ax_frontmost` run detached and reply by id, so they never delay input. Only input commands (touch, multitouch, scroll, key, button, and `configure` with `orientation`) wait for the HID client to finish setting up.
+**Ordering.** Input commands run in arrival order on a single queue, which holds at most 512 commands; beyond that, commands are dropped with an error. `screenshot`, `ax_describe` and `ax_frontmost` run detached and reply by id, so they never delay input. At most 8 can be in flight; beyond that a request fails immediately with a retry message. Only input commands wait for the HID client to finish setting up: touch, multitouch, scroll, key, button, `configure` with `orientation`, and `memory_warning`, which needs the device that HID setup resolves.
 
 ## Conformance mode
 `--conformance` needs no simulator or Xcode. It writes this fixed sequence:

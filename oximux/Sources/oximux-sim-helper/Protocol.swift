@@ -38,7 +38,8 @@ enum ParsedCommand: Equatable {
     /// without it.
     var needsHID: Bool {
         switch self {
-        case .touch, .multitouch, .scroll, .key, .button: return true
+        // memory_warning needs the SimDevice that HID setup resolves.
+        case .touch, .multitouch, .scroll, .key, .button, .memoryWarning: return true
         case .configure(_, _, let orientation): return orientation != nil
         default: return false
         }
