@@ -1,0 +1,146 @@
+# OxiMux fork addition, not part of upstream serve-sim.
+#
+# Builds, tests and (on a `helper-v*` tag) releases oximux-sim-helper, the
+# stdio-only simulator helper bundled by the OxiMux desktop app. See
+# oximux/README.md. OxiMux pins each release by version + sha256, so a
+# published asset must never be replaced; cut a new version instead.
+name: oximux-helper
+
+on:
+  push:
+    branches: [oximux]
+    tags: ["helper-v*"]
+  pull_request:
+    branches: [oximux]
+  workflow_dispatch: {}
+
+concurrency:
+  group: oximux-helper-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+env:
+  # Same runner image family as upstream's native CI. Pinned by major
+  # version; the exact Xcode used is printed in the build log.
+  XCODE_MAJOR: "26"
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the patch-scope check diffs against the upstream base.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select Xcode ${{ env.XCODE_MAJOR }}.x
+        run: |
+          shopt -s nullglob
+          candidates=(/Applications/Xcode_"${XCODE_MAJOR}"*.app)
+          if (( ${#candidates[@]} == 0 )); then
+            echo "::error::no Xcode ${XCODE_MAJOR}.x on this runner"; printf '%s\n' /Applications/Xcode*.app; exit 1
+          fi
+          xcode=$(printf '%s\n' "${candidates[@]}" | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+          swift --version
+
+      - name: Patch scope (only files listed in oximux/PATCHES.md)
+        run: |
+          base=$(cat oximux/upstream-base)
+          changed=$(git diff --name-only "$base" HEAD -- packages/ | sort)
+          listed=$(grep -o 'packages/[^`]*' oximux/PATCHES.md | sort -u)
+          unlisted=$(comm -23 <(printf '%s\n' "$changed") <(printf '%s\n' "$listed") | sed '/^$/d')
+          if [[ -n "$unlisted" ]]; then
+            echo "::error::upstream files changed but not listed in oximux/PATCHES.md:"; echo "$unlisted"; exit 1
+          fi
+          echo "patched upstream files:"; printf '%s\n' "$changed"
+
+      - name: Test
+        run: swift test
+
+      - name: Build (release, arm64)
+        run: swift build -c release --arch arm64
+
+      - name: Smoke checks
+        run: |
+          bin=.build/arm64-apple-macosx/release/oximux-sim-helper
+          "$bin" --version
+          # System Swift runtime only (macOS 14+): nothing to bundle.
+          if otool -L "$bin" | grep -q '@rpath/libswift'; then
+            echo "::error::helper links an @rpath Swift runtime"; otool -L "$bin"; exit 1
+          fi
+          # No entitlements (in particular no get-task-allow).
+          ents=$(codesign -d --entitlements - "$bin" 2>/dev/null || true)
+          if [[ -n "$ents" ]]; then
+            echo "::error::helper carries entitlements"; echo "$ents"; exit 1
+          fi
+          [[ "$(lipo -archs "$bin")" == "arm64" ]]
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oximux-sim-helper-arm64
+          path: .build/arm64-apple-macosx/release/oximux-sim-helper
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/helper-v')
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: oximux-sim-helper-arm64
+          path: dist-bin
+
+      - name: Package
+        id: pkg
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#helper-v}"
+          declared=$(sed -n 's/^let helperVersion = "\(.*\)"$/\1/p' oximux/Sources/oximux-sim-helper/Version.swift)
+          if [[ "$version" != "$declared" ]]; then
+            echo "::error::tag $tag disagrees with helperVersion $declared"; exit 1
+          fi
+          name="oximux-sim-helper-${version}-macos-arm64"
+          mkdir -p "$name"
+          install -m 0755 dist-bin/oximux-sim-helper "$name/oximux-sim-helper"
+          [[ "$("$name/oximux-sim-helper" --version)" == "oximux-sim-helper $version" ]]
+          cp LICENSE oximux/PATCHES.md oximux/README.md "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
+          cat "$name.tar.gz.sha256"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.pkg.outputs.name }}.tar.gz
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.pkg.outputs.name }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          # 0.x releases are pre-releases until the protocol settles.
+          pre=()
+          [[ "$VERSION" == 0.* ]] && pre=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" "$NAME.tar.gz" "$NAME.tar.gz.sha256" \
+            "${pre[@]}" --verify-tag \
+            --title "oximux-sim-helper $VERSION" \
+            --notes "Built from \`$(git rev-parse --short HEAD)\` on upstream base \`$(cut -c1-12 oximux/upstream-base)\`. arm64, hardened-runtime-ready, no entitlements, stdio only. See oximux/README.md and oximux/PATCHES.md."
