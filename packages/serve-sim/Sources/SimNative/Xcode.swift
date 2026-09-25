@@ -11,6 +11,8 @@ enum Xcode {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
         process.arguments = ["-p"]
         process.standardOutput = pipe
+        // OXIMUX PATCH 2 (see oximux/PATCHES.md): never inherit our command pipe.
+        process.standardInput = FileHandle.nullDevice
         // Only read output if the process actually launched; otherwise
         // waitUntilExit() on an unstarted process traps.
         do {

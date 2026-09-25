@@ -622,6 +622,9 @@ actor HIDInjector {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
         process.arguments = ["simctl", "launch", deviceUDID, "com.apple.springboard"]
+        // OXIMUX PATCH 2 (see oximux/PATCHES.md): our stdin is the command pipe; the
+        // child must not inherit it.
+        process.standardInput = FileHandle.nullDevice
         try? process.run()
     }
 
