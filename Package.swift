@@ -6,7 +6,7 @@
 // drives one iOS Simulator for the OxiMux desktop app. It reuses upstream's
 // native Swift (packages/serve-sim/Sources/SimNative + SimNativeSupport)
 // without the Node binding (`sim-module.swift`, the only NodeAPI file). It
-// opens no sockets: JPEG frames go out on stdout, JSON commands come in on
+// opens no sockets: JPEG or H.264 goes out on stdout, JSON commands come in on
 // stdin, and it exits on stdin EOF. See oximux/README.md.
 //
 // This manifest lives at the repo root because SwiftPM rejects a target path

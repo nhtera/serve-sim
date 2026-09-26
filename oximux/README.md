@@ -3,8 +3,8 @@
 This branch (`oximux`) of the `nhtera/serve-sim` fork builds **`oximux-sim-helper`**. It is the child process the [OxiMux](https://github.com/nhtera/OxiMux) desktop app uses to stream and drive one iOS Simulator. It reuses upstream serve-sim's native Swift (Apache-2.0, © Evan Bacon), minus the Node binding.
 
 ## Contract
-The full wire spec is **[`PROTOCOL.md`](PROTOCOL.md)**: protocol version 1, announced in the first `hello` event.
-- **stdio only.** It opens no sockets. Framed JPEG frames and JSON events go out on stdout; framed JSON commands come in on stdin.
+The full wire spec is **[`PROTOCOL.md`](PROTOCOL.md)**: protocol version 2, announced in the first `hello` event.
+- **stdio only.** It opens no sockets. Framed JPEG frames or H.264 pictures and JSON events go out on stdout; framed JSON commands come in on stdin.
 - **Frames** are rotated for display by the device orientation. Touches are in portrait-normalized coordinates.
 - **Lifetime:** it exits on stdin EOF and never outlives its parent.
 - **Conformance:** `--conformance` needs no simulator. It lets OxiMux test its protocol code against the shipped binary.

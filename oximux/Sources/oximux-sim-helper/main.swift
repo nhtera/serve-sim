@@ -1,10 +1,10 @@
 import Foundation
 
-// oximux-sim-helper --udid <UDID> [--scale 0.5] [--fps 30] [--quality 0.7] [--orientation 1]
+// oximux-sim-helper --udid <UDID> [--scale 0.5] [--fps 30] [--quality 0.7] [--orientation 1] [--format jpeg|avcc]
 // oximux-sim-helper --conformance
 // oximux-sim-helper --version
 //
-// Streams one booted simulator as JPEG frames on stdout and applies input
+// Streams one booted simulator as JPEG frames or H.264 on stdout and applies input
 // commands from stdin (see oximux/PROTOCOL.md). Exits when stdin closes.
 
 if CommandLine.arguments.contains("--version") {
@@ -44,7 +44,7 @@ let developerDir = Xcode.developerDir()
 Wire.sendEvent(["event": "hello", "proto": protocolVersion, "version": helperVersion, "xcode": developerDir])
 
 guard let udid = argValue("--udid"), !udid.isEmpty else {
-    fatal("bad_args", "usage: oximux-sim-helper --udid <UDID> [--scale S] [--fps N] [--quality Q] [--orientation 1-4]")
+    fatal("bad_args", "usage: oximux-sim-helper --udid <UDID> [--scale S] [--fps N] [--quality Q] [--orientation 1-4] [--format jpeg|avcc]")
 }
 // Clamped rather than defaulted: a too-small scale must not silently become
 // full resolution, the most expensive setting.
@@ -52,6 +52,7 @@ let scale = min(1, max(0.05, argValue("--scale").flatMap(Double.init).flatMap { 
 let fps = argNumber("--fps", 1...60, 30)
 let quality = argNumber("--quality", 0.1...1, 0.7)
 let orientation = UInt32(argNumber("--orientation", 1...4, 1))
+let format = argValue("--format").flatMap(StreamFormat.init(wire:)) ?? .mjpeg
 
 // The private frameworks are dlopen'd from the active Xcode. When that fails
 // (no Xcode, a moved framework in a new Xcode) upstream code fails later with
@@ -64,7 +65,7 @@ if dlsym(UnsafeMutableRawPointer(bitPattern: -2), "IndigoHIDMessageForMouseNSEve
     fatal("framework_load_failed", "SimulatorKit did not load from \(developerDir)")
 }
 
-let stream = FrameStream(udid: udid, scale: scale, fps: fps, quality: quality, orientation: orientation)
+let stream = FrameStream(udid: udid, scale: scale, fps: fps, quality: quality, orientation: orientation, format: format)
 let commands = Commands(udid: udid, stream: stream)
 commands.run()
 

@@ -9,6 +9,14 @@ final class WireTests: XCTestCase {
     func testHeaderIsKindThenLittleEndianLength() {
         XCTAssertEqual([UInt8](Wire.header(.frame, payloadCount: 0x0102_0304)), [1, 0x04, 0x03, 0x02, 0x01])
         XCTAssertEqual([UInt8](Wire.header(.event, payloadCount: 5)), [2, 5, 0, 0, 0])
+        XCTAssertEqual([UInt8](Wire.header(.video, payloadCount: 5)), [3, 5, 0, 0, 0])
+    }
+
+    func testVideoPayloadIsWidthHeightTagThenData() {
+        let payload = Wire.videoPayload(width: 603, height: 1311, tag: .keyframe, data: Data([0, 0, 0, 1, 0x65]))
+        XCTAssertEqual([UInt8](payload), [0x5B, 0x02, 0, 0, 0x1F, 0x05, 0, 0, 2, 0, 0, 0, 1, 0x65])
+        XCTAssertEqual(Wire.VideoTag.description.rawValue, 1)
+        XCTAssertEqual(Wire.VideoTag.delta.rawValue, 3)
     }
 
     func testFramePayloadIsWidthHeightThenJpeg() {

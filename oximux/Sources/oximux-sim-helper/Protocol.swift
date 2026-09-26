@@ -3,7 +3,7 @@ import Foundation
 /// Protocol version announced in the first `hello` event. OxiMux refuses a
 /// helper whose version it does not speak, so bump this on any wire change
 /// that an older OxiMux would misread. See oximux/PROTOCOL.md.
-let protocolVersion = 1
+let protocolVersion = 2
 
 /// One inbound command after validation. Parsing is pure and separate from
 /// execution so `--conformance` can echo exactly what the helper understood,
@@ -21,7 +21,7 @@ enum ParsedCommand: Equatable {
     case scroll(dx: Double, dy: Double, x: Double?, y: Double?)
     case key(phase: String, usage: UInt32)
     case button(name: String)
-    case configure(scale: Double?, fps: Double?, orientation: UInt32?)
+    case configure(scale: Double?, fps: Double?, orientation: UInt32?, format: StreamFormat?)
     case pause
     case resume
     case screenshot
@@ -40,7 +40,7 @@ enum ParsedCommand: Equatable {
         switch self {
         // memory_warning needs the SimDevice that HID setup resolves.
         case .touch, .multitouch, .scroll, .key, .button, .memoryWarning: return true
-        case .configure(_, _, let orientation): return orientation != nil
+        case .configure(_, _, let orientation, _): return orientation != nil
         default: return false
         }
     }
@@ -90,7 +90,14 @@ enum ParsedCommand: Equatable {
                 guard (1...4).contains(o) else { return .failure(.invalid("orientation must be 1...4")) }
                 orientation = o
             }
-            return .success(.configure(scale: scale, fps: fps, orientation: orientation))
+            var format: StreamFormat?
+            if c["format"] != nil {
+                guard let f = StreamFormat(wire: str(c["format"])) else {
+                    return .failure(.invalid("format must be jpeg|avcc"))
+                }
+                format = f
+            }
+            return .success(.configure(scale: scale, fps: fps, orientation: orientation, format: format))
         case "pause": return .success(.pause)
         case "resume": return .success(.resume)
         case "screenshot": return .success(.screenshot)
@@ -117,8 +124,9 @@ enum ParsedCommand: Equatable {
             return out
         case let .key(phase, usage): return ["cmd": "key", "phase": phase, "usage": usage]
         case let .button(name): return ["cmd": "button", "name": name]
-        case let .configure(scale, fps, orientation):
+        case let .configure(scale, fps, orientation, format):
             var out: [String: Any] = ["cmd": "configure"]
+            if let format { out["format"] = format.wire }
             if let scale { out["scale"] = scale }
             if let fps { out["fps"] = fps }
             if let orientation { out["orientation"] = orientation }
@@ -145,4 +153,24 @@ enum ParsedCommand: Equatable {
     private static func unit(_ v: Any?) -> Double { min(1, max(0, dbl(v))) }
     /// An integer code clamped into UInt32 (never traps).
     private static func u32(_ v: Any?) -> UInt32 { UInt32(min(Double(UInt32.max), max(0, dbl(v).rounded()))) }
+}
+
+/// The stream encodings, by their names on the wire (`--format`,
+/// `configure.format`). Upstream's `mjpeg` is our per-message JPEG `frame`;
+/// `avcc` is the H.264 `video` message.
+extension StreamFormat {
+    init?(wire: String) {
+        switch wire {
+        case "jpeg": self = .mjpeg
+        case "avcc": self = .avcc
+        default: return nil
+        }
+    }
+
+    var wire: String {
+        switch self {
+        case .mjpeg: return "jpeg"
+        case .avcc: return "avcc"
+        }
+    }
 }

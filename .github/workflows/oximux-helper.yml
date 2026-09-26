@@ -88,7 +88,7 @@ jobs:
           fi
           [[ "$(lipo -archs "$bin")" == "arm64" ]]
           # Conformance mode needs no simulator: the first event must be a
-          # protocol-1 hello, and a command must echo back parsed.
+          # protocol-2 hello, and a command must echo back parsed.
           python3 - "$bin" <<'PY'
           import json, struct, subprocess, sys
           p = subprocess.Popen([sys.argv[1], "--conformance"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -99,7 +99,7 @@ jobs:
               n = struct.unpack("<I", out[i + 1:i + 5])[0]
               msgs.append((out[i], out[i + 5:i + 5 + n])); i += 5 + n
           hello = json.loads(msgs[0][1])
-          assert msgs[0][0] == 2 and hello["event"] == "hello" and hello["proto"] == 1, hello
+          assert msgs[0][0] == 2 and hello["event"] == "hello" and hello["proto"] == 2, hello
           last = json.loads(msgs[-1][1])
           assert last == {"event": "parsed", "command": {"cmd": "ping"}, "id": 1}, last
           assert p.returncode == 0

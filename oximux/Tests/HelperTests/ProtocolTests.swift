@@ -32,17 +32,28 @@ final class ProtocolTests: XCTestCase {
 
     func testConfigureDropsOutOfRangeValuesButRejectsBadOrientation() {
         XCTAssertEqual(try parse(#"{"cmd":"configure","scale":2,"fps":30}"#).get(),
-                       .configure(scale: nil, fps: 30, orientation: nil))
+                       .configure(scale: nil, fps: 30, orientation: nil, format: nil))
         guard case .failure = parse(#"{"cmd":"configure","orientation":7}"#) else {
             return XCTFail("orientation 7 must be rejected")
         }
         XCTAssertEqual(try parse(#"{"cmd":"configure","orientation":3}"#).get(),
-                       .configure(scale: nil, fps: nil, orientation: 3))
+                       .configure(scale: nil, fps: nil, orientation: 3, format: nil))
+    }
+
+    func testConfigureFormatIsJpegOrAvcc() {
+        XCTAssertEqual(try parse(#"{"cmd":"configure","format":"avcc"}"#).get(),
+                       .configure(scale: nil, fps: nil, orientation: nil, format: .avcc))
+        XCTAssertEqual(ParsedCommand.configure(scale: nil, fps: nil, orientation: nil, format: .mjpeg).canonical["format"] as? String,
+                       "jpeg")
+        guard case .failure = parse(#"{"cmd":"configure","format":"hevc"}"#) else {
+            return XCTFail("an unknown format must be rejected")
+        }
+        XCTAssertFalse(ParsedCommand.configure(scale: nil, fps: nil, orientation: nil, format: .avcc).needsHID)
     }
 
     func testBooleansAreNotNumbers() {
         XCTAssertEqual(try parse(#"{"cmd":"configure","scale":true}"#).get(),
-                       .configure(scale: nil, fps: nil, orientation: nil))
+                       .configure(scale: nil, fps: nil, orientation: nil, format: nil))
     }
 
     func testButtonsAreAllowListed() {
@@ -58,8 +69,8 @@ final class ProtocolTests: XCTestCase {
 
     func testOnlyInputCommandsWaitForHID() {
         XCTAssertTrue(ParsedCommand.touch(phase: "begin", x: 0, y: 0, edge: 0).needsHID)
-        XCTAssertTrue(ParsedCommand.configure(scale: nil, fps: nil, orientation: 3).needsHID)
-        XCTAssertFalse(ParsedCommand.configure(scale: 0.5, fps: nil, orientation: nil).needsHID)
+        XCTAssertTrue(ParsedCommand.configure(scale: nil, fps: nil, orientation: 3, format: nil).needsHID)
+        XCTAssertFalse(ParsedCommand.configure(scale: 0.5, fps: nil, orientation: nil, format: nil).needsHID)
         XCTAssertFalse(ParsedCommand.screenshot.needsHID)
         XCTAssertFalse(ParsedCommand.axDescribe.needsHID)
         XCTAssertTrue(ParsedCommand.memoryWarning.needsHID)

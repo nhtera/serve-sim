@@ -4,8 +4,8 @@ import Foundation
 import ImageIO
 import Accelerate
 
-/// Capture → (dedupe) → scale → rotate → JPEG → stdout, at most `fps` frames
-/// a second.
+/// Capture → (dedupe) → scale → rotate → JPEG or H.264 → stdout, at most
+/// `fps` frames a second.
 ///
 /// The simulator framebuffer never rotates: in landscape the UI is drawn
 /// sideways inside the portrait buffer. Frames are rotated here, by the
@@ -37,11 +37,22 @@ final class FrameStream: @unchecked Sendable {
     private var lastSent: CVPixelBuffer?
     private var lastSize: (Int, Int) = (0, 0)
     private var orientation: UInt32 = 1
+    private var format: StreamFormat
     private let quality: Double
+    /// The `avcc` encoder. Touched only by the encode thread.
+    private lazy var h264 = H264Output()
+    // Encode thread only.
+    /// Consecutive H.264 failures; a few in a row switch the stream to JPEG.
+    private var encodeFailures = 0
+    /// The last picture sent was a delta: when the screen goes still, one key
+    /// frame sharpens what motion-rate deltas left soft.
+    private var refreshDue = false
+    private static let maxEncodeFailures = 3
     private let rateTicks = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
 
-    init(udid: String, scale: Double, fps: Double, quality: Double, orientation: UInt32) {
+    init(udid: String, scale: Double, fps: Double, quality: Double, orientation: UInt32, format: StreamFormat) {
         self.udid = udid
+        self.format = format
         self.scale = scale
         self.fps = fps
         self.quality = quality
@@ -94,12 +105,14 @@ final class FrameStream: @unchecked Sendable {
     }
 
     /// Apply new stream settings. A new orientation also emits the
-    /// `orientation` event, ordered against frames (see `emitLock`).
-    func configure(scale: Double?, fps: Double?, orientation: UInt32?) {
+    /// `orientation` event, ordered against frames (see `emitLock`). Any
+    /// change forces the next frame, which in `avcc` is a key frame.
+    func configure(scale: Double?, fps: Double?, orientation: UInt32?, format: StreamFormat?) {
         emitLock.lock()
         cond.lock()
         if let scale, scale > 0, scale <= 1 { self.scale = scale }
         if let fps, fps >= 1, fps <= 60 { self.fps = fps }
+        if let format { self.format = format }
         let rotated = orientation.map { (1...4).contains($0) } ?? false
         if let orientation, rotated { self.orientation = orientation }
         forceNext = true
@@ -129,7 +142,9 @@ final class FrameStream: @unchecked Sendable {
         let orientation = self.orientation
         cond.unlock()
         guard let buffer else { return nil }
-        return Self.encodeImage(buffer, scale: 1, orientation: orientation, type: "public.png", quality: nil)?.0
+        return Self.withDisplayPixels(buffer, scale: 1, orientation: orientation) {
+            Self.encodeImage($0, type: "public.png", quality: nil)
+        }?.0
     }
 
     private func encodeLoop() {
@@ -159,21 +174,62 @@ final class FrameStream: @unchecked Sendable {
         forceNext = false
         let scale = self.scale
         let orientation = self.orientation
+        let format = self.format
         let previous = lastSent
         cond.unlock()
 
-        if !force, let previous, Self.samePixels(previous, buffer) { return }
+        var keyframe = force
+        if !force, let previous, Self.samePixels(previous, buffer) {
+            // A still screen sends nothing, except in `avcc` the one refresh.
+            guard format == .avcc, refreshDue else { return }
+            keyframe = true
+        }
         // Deadline pacing: sleeping overshoot doesn't accumulate into a lower rate.
         due = max(due + interval, ProcessInfo.processInfo.systemUptime - interval)
-        guard let (jpeg, outW, outH) = Self.encodeImage(
-            buffer, scale: scale, orientation: orientation, type: "public.jpeg", quality: quality)
-        else { return }
+        let output: Output
+        switch format {
+        case .avcc:
+            do {
+                guard let packet = try Self.withDisplayPixels(buffer, scale: scale, orientation: orientation, {
+                    try h264.encode($0, keyframe: keyframe)
+                }) else {
+                    // A dropped forced frame must not leave OxiMux waiting
+                    // for the next natural key frame.
+                    if keyframe { cond.lock(); forceNext = true; cond.unlock() }
+                    return
+                }
+                encodeFailures = 0
+                output = .video(packet)
+            } catch {
+                encodeFailures += 1
+                cond.lock()
+                forceNext = true // retry this screen, as a key frame
+                let fallBack = encodeFailures >= Self.maxEncodeFailures && self.format == .avcc
+                if fallBack { self.format = .mjpeg }
+                cond.unlock()
+                // No H.264 on this Mac (or a wedged encoder): stream JPEG
+                // rather than nothing. OxiMux paints either kind.
+                if fallBack {
+                    encodeFailures = 0
+                    Wire.sendEvent(["event": "format", "value": StreamFormat.mjpeg.wire,
+                                    "message": "H.264 encoding failed (\(error)); streaming JPEG"])
+                }
+                return
+            }
+        case .mjpeg:
+            guard let (jpeg, outW, outH) = Self.withDisplayPixels(buffer, scale: scale, orientation: orientation, {
+                Self.encodeImage($0, type: "public.jpeg", quality: quality)
+            }) else { return }
+            output = .jpeg(jpeg, outW, outH)
+        }
 
         emitLock.lock()
         defer { emitLock.unlock() }
         cond.lock()
+        // Re-encode this screen with the new rotation. In `avcc` the dropped
+        // picture was a reference, so the forced frame is also a key frame.
         let stale = self.orientation != orientation
-        if stale { forceNext = true } // re-encode this screen with the new rotation
+        if stale { forceNext = true }
         cond.unlock()
         if stale { return }
         let size = (CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer))
@@ -181,7 +237,18 @@ final class FrameStream: @unchecked Sendable {
             lastSize = size
             Wire.sendEvent(["event": "size", "width": size.0, "height": size.1])
         }
-        Wire.sendFrame(width: outW, height: outH, jpeg: jpeg)
+        switch output {
+        case let .jpeg(jpeg, width, height):
+            Wire.sendFrame(width: width, height: height, jpeg: jpeg)
+            refreshDue = false
+        case let .video(packet):
+            refreshDue = !packet.keyframe
+            if let description = packet.description {
+                Wire.sendVideo(width: packet.width, height: packet.height, tag: .description, data: description)
+            }
+            Wire.sendVideo(width: packet.width, height: packet.height,
+                           tag: packet.keyframe ? .keyframe : .delta, data: packet.avcc)
+        }
         cond.lock()
         lastSent = buffer
         cond.unlock()
@@ -206,13 +273,20 @@ final class FrameStream: @unchecked Sendable {
         return memcmp(pa, pb, CVPixelBufferGetBytesPerRow(a) * CVPixelBufferGetHeight(a)) == 0
     }
 
-    /// Encode `buffer` (BGRA) at `scale`, rotated for `orientation`, without
-    /// copying the full-size frame: the CGImage wraps the locked pixel memory
-    /// (or a small scratch buffer) directly; downscaling and rotation are one
-    /// vImage (NEON) pass each.
-    private static func encodeImage(
-        _ buffer: CVPixelBuffer, scale: Double, orientation: UInt32, type: String, quality: Double?
-    ) -> (Data, Int, Int)? {
+    /// One encoded picture, ready to write.
+    private enum Output {
+        case jpeg(Data, Int, Int)
+        case video(H264Output.Packet)
+    }
+
+    /// Hand `body` the pixels of `buffer` (BGRA) at `scale`, rotated for
+    /// `orientation`, without copying the full-size frame: they are the
+    /// locked pixel memory (or a small scratch buffer) itself; downscaling
+    /// and rotation are one vImage (NEON) pass each. The pixels are valid
+    /// only inside `body`.
+    private static func withDisplayPixels<T>(
+        _ buffer: CVPixelBuffer, scale: Double, orientation: UInt32, _ body: (vImage_Buffer) throws -> T?
+    ) rethrows -> T? {
         CVPixelBufferLockBaseAddress(buffer, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
         guard let base = CVPixelBufferGetBaseAddress(buffer) else { return nil }
@@ -247,6 +321,12 @@ final class FrameStream: @unchecked Sendable {
             }
             pixels = dest
         }
+        return try body(pixels)
+    }
+
+    /// `pixels` as an image file of `type`, with its size. The CGImage
+    /// borrows `pixels`.
+    private static func encodeImage(_ pixels: vImage_Buffer, type: String, quality: Double?) -> (Data, Int, Int)? {
         let size = pixels.rowBytes * Int(pixels.height)
         guard let provider = CGDataProvider(dataInfo: nil, data: pixels.data, size: size, releaseData: { _, _, _ in }),
               let image = CGImage(
@@ -255,7 +335,6 @@ final class FrameStream: @unchecked Sendable {
                 bitmapInfo: CGBitmapInfo(rawValue: CGBitmapInfo.byteOrder32Little.rawValue | CGImageAlphaInfo.noneSkipFirst.rawValue),
                 provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
         else { return nil }
-        // The image borrows `pixels`; encode before the lock/scratch go away.
         guard let data = encode(image, type: type, quality: quality) else { return nil }
         return (data, image.width, image.height)
     }

@@ -6,6 +6,7 @@ import Foundation
 /// Outbound framing: `[u8 kind][u32 LE len][payload]`.
 /// - `Kind.frame`: `[u32 LE width][u32 LE height][JPEG bytes]`
 /// - `Kind.event`: UTF-8 JSON object (see oximux/PROTOCOL.md)
+/// - `Kind.video`: `[u32 LE width][u32 LE height][u8 tag][payload]`, H.264
 ///
 /// No message exceeds `maxMessageBytes`: OxiMux treats a larger length prefix
 /// as a corrupt stream and ends the session, so an oversized reply becomes an
@@ -16,6 +17,17 @@ enum Wire {
     enum Kind: UInt8 {
         case frame = 1
         case event = 2
+        case video = 3
+    }
+
+    /// What a `video` payload carries.
+    enum VideoTag: UInt8 {
+        /// The avcC record (SPS/PPS); precedes every key frame.
+        case description = 1
+        /// An IDR picture, AVCC length-prefixed NAL units.
+        case keyframe = 2
+        /// A non-IDR picture.
+        case delta = 3
     }
 
     /// Private duplicate of the original stdout. Set up by `claimStdout()`.
@@ -42,6 +54,15 @@ enum Wire {
             return
         }
         send(.frame, payload)
+    }
+
+    static func sendVideo(width: Int, height: Int, tag: VideoTag, data: Data) {
+        let payload = videoPayload(width: width, height: height, tag: tag, data: data)
+        guard payload.count <= maxMessageBytes else {
+            fputs("[oximux] dropped a \(payload.count)-byte picture (over the message limit)\n", stderr)
+            return
+        }
+        send(.video, payload)
     }
 
     /// The protocol's per-message cap (OxiMux's `MAX_MESSAGE_BYTES`).
@@ -88,6 +109,16 @@ enum Wire {
         appendU32(&payload, UInt32(width))
         appendU32(&payload, UInt32(height))
         payload.append(jpeg)
+        return payload
+    }
+
+    /// `[u32 LE width][u32 LE height][u8 tag][payload]` — a video payload.
+    static func videoPayload(width: Int, height: Int, tag: VideoTag, data: Data) -> Data {
+        var payload = Data(capacity: 9 + data.count)
+        appendU32(&payload, UInt32(width))
+        appendU32(&payload, UInt32(height))
+        payload.append(tag.rawValue)
+        payload.append(data)
         return payload
     }
 

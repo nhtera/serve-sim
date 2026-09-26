@@ -83,16 +83,16 @@ final class Commands: @unchecked Sendable {
             await hid.sendKey(type: phase, usage: usage)
         case let .button(name):
             await hid.sendButton(button: name, deviceUDID: udid)
-        case let .configure(scale, fps, orientation):
+        case let .configure(scale, fps, orientation, format):
             if let orientation {
                 guard await hid.sendOrientation(orientation: orientation) else {
                     return Self.fail(id, "orientation failed")
                 }
                 // Frames are rotated for display from now on; the stream
                 // emits the `orientation` event, ordered against frames.
-                stream.configure(scale: scale, fps: fps, orientation: orientation)
+                stream.configure(scale: scale, fps: fps, orientation: orientation, format: format)
             } else {
-                stream.configure(scale: scale, fps: fps, orientation: nil)
+                stream.configure(scale: scale, fps: fps, orientation: nil, format: format)
             }
             Self.reply(id, ["ok": true])
         case .pause:
