@@ -44,8 +44,8 @@ final class FrameStream: @unchecked Sendable {
     // Encode thread only.
     /// Consecutive H.264 failures; a few in a row switch the stream to JPEG.
     private var encodeFailures = 0
-    /// The last picture sent was a delta: when the screen goes still, one key
-    /// frame sharpens what motion-rate deltas left soft.
+    /// The last picture sent was sized for motion: when the screen goes
+    /// still, one sharp key frame (a capped quantizer) replaces it.
     private var refreshDue = false
     private static let maxEncodeFailures = 3
     private let rateTicks = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
@@ -175,14 +175,17 @@ final class FrameStream: @unchecked Sendable {
         let scale = self.scale
         let orientation = self.orientation
         let format = self.format
+        let frameRate = self.fps
         let previous = lastSent
         cond.unlock()
 
         var keyframe = force
+        var sharp = false
         if !force, let previous, Self.samePixels(previous, buffer) {
             // A still screen sends nothing, except in `avcc` the one refresh.
             guard format == .avcc, refreshDue else { return }
             keyframe = true
+            sharp = true
         }
         // Deadline pacing: sleeping overshoot doesn't accumulate into a lower rate.
         due = max(due + interval, ProcessInfo.processInfo.systemUptime - interval)
@@ -191,11 +194,11 @@ final class FrameStream: @unchecked Sendable {
         case .avcc:
             do {
                 guard let packet = try Self.withDisplayPixels(buffer, scale: scale, orientation: orientation, {
-                    try h264.encode($0, keyframe: keyframe)
+                    try h264.encode($0, keyframe: keyframe, fps: frameRate, sharp: sharp)
                 }) else {
                     // A dropped forced frame must not leave OxiMux waiting
                     // for the next natural key frame.
-                    if keyframe { cond.lock(); forceNext = true; cond.unlock() }
+                    if keyframe && !sharp { cond.lock(); forceNext = true; cond.unlock() }
                     return
                 }
                 encodeFailures = 0
@@ -242,7 +245,7 @@ final class FrameStream: @unchecked Sendable {
             Wire.sendFrame(width: width, height: height, jpeg: jpeg)
             refreshDue = false
         case let .video(packet):
-            refreshDue = !packet.keyframe
+            refreshDue = !sharp
             if let description = packet.description {
                 Wire.sendVideo(width: packet.width, height: packet.height, tag: .description, data: description)
             }

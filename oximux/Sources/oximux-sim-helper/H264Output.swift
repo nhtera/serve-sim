@@ -38,18 +38,29 @@ final class H264Output {
         }
     }
 
-    private let encoder = H264Encoder()
+    /// Rebuilt when the frame rate or the target bitrate changes: upstream's
+    /// encoder fixes both at init. Its defaults (60 fps, 6 Mbit/s) halved the
+    /// real budget at our 30 fps (timestamps count frames at `fps`), and one
+    /// bitrate for every size starved full resolution.
+    private var encoder: H264Encoder?
+    private var encoderRate = (fps: 0, bitrate: 0)
     private var pool: CVPixelBufferPool?
     private var poolSize = (width: 0, height: 0)
     private var lastDescription: Data?
 
     /// Encode `pixels` (BGRA). `nil` when VideoToolbox dropped the frame
     /// under pressure, which is not an error.
-    func encode(_ pixels: vImage_Buffer, keyframe: Bool) throws -> Packet? {
+    func encode(_ pixels: vImage_Buffer, keyframe: Bool, fps: Double, sharp: Bool = false) throws -> Packet? {
         let width = Int(pixels.width)
         let height = Int(pixels.height)
         guard let buffer = copy(pixels, width: width, height: height) else { throw Failure.noBuffer }
-        guard let encoded = try encodeWaiting(buffer, keyframe: keyframe) else { return nil }
+        let rate = (fps: max(1, Int(fps.rounded())), bitrate: Self.bitrate(width: width, height: height, fps: fps))
+        if encoder == nil || rate != encoderRate {
+            // A new session starts with a key frame and its description.
+            encoder = H264Encoder(fps: rate.fps, bitrate: rate.bitrate)
+            encoderRate = rate
+        }
+        guard let encoded = try encodeWaiting(buffer, keyframe: keyframe, maxFrameQP: sharp ? Self.sharpMaxQP : nil) else { return nil }
         let isKey = encoded.kind == .keyframe
         // Upstream hands out the record once per encoder session; keep it.
         if let fresh = encoded.description { lastDescription = fresh }
@@ -57,19 +68,40 @@ final class H264Output {
                       keyframe: isKey, avcc: encoded.avcc)
     }
 
+    /// Bits per pixel per frame. Measured on an iPhone 17 (static SSIM against
+    /// a lossless screenshot): 0.15 lifted full resolution from 0.984 to
+    /// 0.997 (JPEG at quality 0.7: 0.996); 0.25 added little. That is about
+    /// 3.5 Mbit/s at half size and 14 Mbit/s at full, 30 fps.
+    static let bitsPerPixel = 0.15
+    /// Bounds keep a tiny window legible and a Pro Max at 60 fps sane.
+    static let bitrateRange = 2_000_000...24_000_000
+
+    /// Target average bitrate for `width`×`height` at `fps`.
+    static func bitrate(width: Int, height: Int, fps: Double) -> Int {
+        let bits = Double(width * height) * max(1, fps) * bitsPerPixel
+        return min(max(Int(bits), bitrateRange.lowerBound), bitrateRange.upperBound)
+    }
+
+    /// Quantizer cap for the still-screen refresh: one large, sharp key frame
+    /// instead of the motion-rate one, so static gradients lose their 16 px
+    /// blocking. 16 was near-smooth; the frame costs about 80 KB at half
+    /// size and 160 KB at full, once per still period.
+    static let sharpMaxQP = 16
+
     /// Bridge the encoder actor to this thread. Bounded, so a wedged
     /// VideoToolbox can never stall the stream for good: the caller falls
     /// back to JPEG.
-    private func encodeWaiting(_ buffer: CVPixelBuffer, keyframe: Bool) throws -> H264Encoder.Encoded? {
+    private func encodeWaiting(_ buffer: CVPixelBuffer, keyframe: Bool, maxFrameQP: Int?) throws -> H264Encoder.Encoded? {
         final class Box: @unchecked Sendable {
             var result: Result<H264Encoder.Encoded?, Error> = .success(nil)
         }
         let box = Box()
         let done = DispatchSemaphore(value: 0)
         let pixelBuffer = buffer
+        guard let encoder else { return nil }
         Task { [encoder] in
             do {
-                box.result = .success(try await encoder.encode(pixelBuffer, forceKeyframe: keyframe))
+                box.result = .success(try await encoder.encode(pixelBuffer, forceKeyframe: keyframe, maxFrameQP: maxFrameQP))
             } catch {
                 box.result = .failure(error)
             }
