@@ -13,5 +13,6 @@ Upstream base: see `oximux/upstream-base`.
 |---|---|---|---|
 | 1 | `packages/serve-sim/Sources/SimNative/FrameCapture.swift` | Rate-limit and pause **before** the full-frame Photocopier copy. Upstream copies on every simulator frame callback, up to 60 Hz, however slowly the consumer encodes. Adds `setCaptureRate(maxFPS:paused:)`. At 30 fps and half resolution this cut helper CPU from about 30% to about 24%, and to about 0.2% while paused. | not yet |
 | 2 | `packages/serve-sim/Sources/SimNative/HIDInjector.swift`, `packages/serve-sim/Sources/SimNative/Xcode.swift` | Spawned `xcrun` / `xcode-select` get `/dev/null` as stdin, so they can't read the host's command pipe. | not yet |
+| 3 | `packages/serve-sim/Sources/SimNative/H264Encoder.swift` | `encode(_:forceKeyframe:maxFrameQP:)` sets `kVTCompressionPropertyKey_MaxAllowedFrameQP` for one frame, so the still-screen refresh key frame can be sharp while motion stays inside the bitrate. At QP 16 the 16 px gradient blocking is gone. | not yet |
 
 When upstream merges an equivalent change, drop the patch commit during the next rebase and remove its row.

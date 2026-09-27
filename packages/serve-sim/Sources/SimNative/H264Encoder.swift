@@ -31,6 +31,7 @@ actor H264Encoder {
     private var bitrate: Int
     private var emittedDescription = false
     private var frameCount: Int64 = 0
+    private var maxFrameQP: Int?
 
     init(fps: Int = 60, bitrate: Int = 6_000_000) {
         self.fps = Int32(fps)
@@ -43,7 +44,9 @@ actor H264Encoder {
 
     /// Encode one frame. Real-time VideoToolbox sessions may deliberately drop
     /// a frame under pressure; that is reported as `nil`, not as an error.
-    func encode(_ source: CVPixelBuffer, forceKeyframe: Bool = false) async throws -> Encoded? {
+    /// `maxFrameQP` caps this frame's quantizer (lower = sharper, larger);
+    /// `nil` leaves rate control free. It sticks until changed.
+    func encode(_ source: CVPixelBuffer, forceKeyframe: Bool = false, maxFrameQP: Int? = nil) async throws -> Encoded? {
         let w = Int32(CVPixelBufferGetWidth(source))
         let h = Int32(CVPixelBufferGetHeight(source))
         if session == nil || w != width || h != height {
@@ -53,6 +56,12 @@ actor H264Encoder {
         }
         guard let session else {
             throw Errors.couldNotCreateSession
+        }
+        if maxFrameQP != self.maxFrameQP {
+            self.maxFrameQP = maxFrameQP
+            // 51 is H.264's largest QP: no cap.
+            VTSessionSetProperty(session, key: kVTCompressionPropertyKey_MaxAllowedFrameQP,
+                                 value: NSNumber(value: maxFrameQP ?? 51))
         }
 
         frameCount += 1
@@ -148,6 +157,7 @@ actor H264Encoder {
         VTCompressionSessionPrepareToEncodeFrames(sess)
         session = sess
         emittedDescription = false
+        maxFrameQP = nil
     }
 
     private func extract(from sample: CMSampleBuffer) throws -> Encoded {
