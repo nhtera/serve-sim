@@ -13,7 +13,8 @@ import ImageIO
 /// rotated here; `size` carries the **displayed** size, and an `orientation`
 /// event (1 portrait, 3 landscape) follows whenever the aspect flips. The
 /// phone sends about 60 frames a second whatever the screen does, so a still
-/// screen is caught by comparing pixels, like the sim helper's idle re-emits.
+/// screen is caught by comparing pixels (`Still`), like the sim helper's idle
+/// re-emits.
 ///
 /// Capture calls back on its own queue; only the newest buffer is kept in a
 /// slot, and one encode thread drains it, so a slow encode drops frames
@@ -39,6 +40,7 @@ final class DeviceStream: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     private var lastSent: CVPixelBuffer?
     private let quality: Double
     // Encode thread only.
+    private var lastSentThumb: [UInt8]?
     private var lastSize = (0, 0)
     private var landscape = false
     private lazy var h264 = H264Output()
@@ -167,12 +169,13 @@ final class DeviceStream: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         latest = nil
         let force = forceNext
         forceNext = false
-        let (scale, format, frameRate, previous) = (self.scale, self.format, self.fps, lastSent)
+        let (scale, format, frameRate) = (self.scale, self.format, self.fps)
         cond.unlock()
 
         var keyframe = force
         var sharp = false
-        if !force, let previous, Self.samePixels(previous, buffer) {
+        let thumb = Self.withPixels(buffer, scale: 1) { Still.thumbnail($0) }
+        if !force, let thumb, let previous = lastSentThumb, Still.looksSame(previous, thumb) {
             // A still screen sends nothing, except in `avcc` the one refresh.
             guard format == .avcc, refreshDue else { return }
             keyframe = true
@@ -230,22 +233,7 @@ final class DeviceStream: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         cond.lock()
         lastSent = buffer
         cond.unlock()
-    }
-
-    private static func samePixels(_ a: CVPixelBuffer, _ b: CVPixelBuffer) -> Bool {
-        guard CVPixelBufferGetWidth(a) == CVPixelBufferGetWidth(b),
-              CVPixelBufferGetHeight(a) == CVPixelBufferGetHeight(b),
-              CVPixelBufferGetBytesPerRow(a) == CVPixelBufferGetBytesPerRow(b)
-        else { return false }
-        if a === b { return true }
-        CVPixelBufferLockBaseAddress(a, .readOnly)
-        CVPixelBufferLockBaseAddress(b, .readOnly)
-        defer {
-            CVPixelBufferUnlockBaseAddress(a, .readOnly)
-            CVPixelBufferUnlockBaseAddress(b, .readOnly)
-        }
-        guard let pa = CVPixelBufferGetBaseAddress(a), let pb = CVPixelBufferGetBaseAddress(b) else { return false }
-        return memcmp(pa, pb, CVPixelBufferGetBytesPerRow(a) * CVPixelBufferGetHeight(a)) == 0
+        lastSentThumb = thumb
     }
 
     /// Hand `body` the BGRA pixels of `buffer` at `scale`: the locked pixel

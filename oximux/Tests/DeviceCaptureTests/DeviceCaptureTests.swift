@@ -58,4 +58,35 @@ final class DeviceCaptureTests: XCTestCase {
         XCTAssertNotNil(unwrapped.description)
         XCTAssertFalse(unwrapped.avcc.isEmpty)
     }
+
+    /// Lossy-stream noise on a still screen reads as the same screen; a
+    /// caret-sized mark does not.
+    func testAStillScreenSurvivesNoiseButNotACaret() {
+        let (w, h) = (64, 64)
+        func picture(_ paint: (UnsafeMutablePointer<UInt8>) -> Void) -> [UInt8] {
+            let bytes = UnsafeMutablePointer<UInt8>.allocate(capacity: w * h * 4)
+            defer { bytes.deallocate() }
+            memset(bytes, 0xC0, w * h * 4)
+            paint(bytes)
+            return Still.thumbnail(vImage_Buffer(data: bytes, height: vImagePixelCount(h), width: vImagePixelCount(w), rowBytes: w * 4))
+        }
+        let still = picture { _ in }
+        XCTAssertEqual(still.count, 64)
+        // Every byte nudged by up to ±51, as measured on a phone.
+        var seed: UInt32 = 7
+        let noisy = picture { p in
+            for i in 0..<(w * h * 4) {
+                seed = seed &* 1_103_515_245 &+ 12345
+                p[i] = UInt8(clamping: 0xC0 + Int(seed >> 16) % 103 - 51)
+            }
+        }
+        XCTAssertTrue(Still.looksSame(still, noisy))
+        // A dark caret, 6 pixels wide and 20 tall.
+        let caret = picture { p in
+            for y in 20..<40 { for x in 10..<16 { for c in 0..<3 { p[(y * w + x) * 4 + c] = 0x10 } } }
+        }
+        XCTAssertFalse(Still.looksSame(still, caret))
+        // A rotated phone (another size) is never the same screen.
+        XCTAssertFalse(Still.looksSame(still, Array(still.prefix(32))))
+    }
 }
