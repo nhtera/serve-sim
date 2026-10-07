@@ -4,6 +4,7 @@ import Foundation
 
 // oximux-device-capture --device <UDID> [--scale 0.05-1] [--fps 1-60] [--quality 0.1-1] [--format jpeg|avcc]
 // oximux-device-capture --version
+// oximux-device-capture --conformance [--fatal <reason>]   (no phone; for tests)
 //
 // Streams one USB iPhone's screen (macOS shows it as a screen-capture device)
 // as JPEG frames or H.264 on stdout, in the sim helper's protocol v2, and
@@ -23,6 +24,11 @@ if CommandLine.arguments.contains("--version") {
 
 Wire.claimStdout()
 signal(SIGPIPE, SIG_IGN)
+
+// Before the camera, the phone and the arguments: no device, no prompt.
+if CommandLine.arguments.contains("--conformance") {
+    CaptureConformance.run(Array(CommandLine.arguments.dropFirst()))
+}
 
 /// Report a startup failure the host can act on (`reason` is machine
 /// readable), then exit.

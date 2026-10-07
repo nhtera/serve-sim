@@ -145,6 +145,26 @@ jobs:
           assert p.returncode == 3, p.returncode
           print("capture bad_args ok")
           PY
+          # Conformance (no phone, no camera): hello, ready, size, a frame,
+          # then a recording through record_start / record_stop.
+          python3 - "$bin" <<'PY'
+          import json, os, struct, subprocess, sys, tempfile
+          def frame(obj):
+              b = json.dumps(obj).encode(); return struct.pack("<I", len(b)) + b
+          movie = os.path.join(tempfile.mkdtemp(), "c.mov")
+          cmds = frame({"cmd": "record_start", "path": movie, "id": 1}) + frame({"cmd": "record_stop", "id": 2})
+          p = subprocess.run([sys.argv[1], "--conformance"], input=cmds, capture_output=True, timeout=30)
+          out, msgs, i = p.stdout, [], 0
+          while i < len(out):
+              n = struct.unpack("<I", out[i + 1:i + 5])[0]
+              msgs.append((out[i], out[i + 5:i + 5 + n])); i += 5 + n
+          events = [json.loads(b) for k, b in msgs if k == 2]
+          assert [e["event"] for e in events[:3]] == ["hello", "ready", "size"], events
+          replies = {e["id"]: e for e in events if e.get("event") == "response"}
+          assert replies[1]["ok"] and replies[2]["result"]["path"] == movie, replies
+          assert os.path.exists(movie) and p.returncode == 0, p.returncode
+          print("capture conformance ok")
+          PY
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

@@ -102,7 +102,9 @@ The same protocol version (2), framing and parser, for a **USB iPhone's screen, 
 ```
 oximux-device-capture --device <UDID> [--scale 0.05-1] [--fps 1-60] [--quality 0.1-1] [--format jpeg|avcc]
 oximux-device-capture --version    # "oximux-device-capture <version>"
+oximux-device-capture --conformance [--fatal <reason>]
 ```
+`--conformance` needs no phone and asks for no camera: `hello`, `ready`, `size` (1290×2796) and one synthetic frame, then commands are answered as a view-only session with no frames would; `record_start` checks its path as above and writes a stand-in movie there, `record_stop` reports it, and stdin closing mid-recording sends `recorded`. With `--fatal <reason>` it ends after `hello` with that `fatal` instead. OxiMux's tests drive it through the real spawn.
 - `--device` is the phone's UDID: devicectl's `hardwareProperties.udid`, which is also AVFoundation's `uniqueID` (not devicectl's top-level `identifier`). Hex digits and dashes only.
 - Defaults, clamping and exit codes as for the sim helper. `hello.xcode` is empty.
 
