@@ -124,6 +124,13 @@ jobs:
           keys=$(plutil -convert json -o - oximux/entitlements/device-capture.entitlements)
           [[ "$keys" == '{"com.apple.security.device.camera":true}' ]] || { echo "::error::unexpected entitlements: $keys"; exit 1; }
           plutil -lint oximux/device-capture/Info.plist
+          # The bundle's version is the helper's: caught on every branch build,
+          # not first at tag time.
+          declared=$(sed -n 's/^let helperVersion = "\(.*\)"$/\1/p' oximux/Sources/oximux-sim-helper/Version.swift)
+          for key in CFBundleShortVersionString CFBundleVersion; do
+            got=$(plutil -extract "$key" raw oximux/device-capture/Info.plist)
+            [[ "$got" == "$declared" ]] || { echo "::error::device-capture Info.plist $key is $got, helperVersion is $declared"; exit 1; }
+          done
           # Bad arguments: a protocol-2 hello, then a bad_args fatal, exit 3
           # (no phone, no camera prompt).
           python3 - "$bin" <<'PY'
@@ -230,4 +237,4 @@ jobs:
             "$CAPTURE.tar.gz" "$CAPTURE.tar.gz.sha256" \
             "${pre[@]}" --verify-tag \
             --title "oximux-sim-helper and oximux-device-capture $VERSION" \
-            --notes "Built from \`$(git rev-parse --short HEAD)\` on upstream base \`$(cut -c1-12 oximux/upstream-base)\`. arm64, hardened-runtime-ready, no entitlements, stdio only. See oximux/README.md and oximux/PATCHES.md."
+            --notes "Built from \`$(git rev-parse --short HEAD)\` on upstream base \`$(cut -c1-12 oximux/upstream-base)\`. arm64, hardened-runtime-ready, stdio only. The sim helper carries no entitlements; the capture app is unsigned, for OxiMux to sign with the camera entitlement alone (oximux/entitlements/device-capture.entitlements). See oximux/README.md and oximux/PATCHES.md."

@@ -37,15 +37,16 @@ final class DeviceStream: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     private var scale: Double
     private var fps: Double
     private var format: StreamFormat
-    private var lastSent: CVPixelBuffer?
+    /// The newest frame captured, for screenshots (never an old one: each
+    /// buffer held is one fewer in the capture pool).
+    private var lastCaptured: CVPixelBuffer?
     private let quality: Double
     // Encode thread only.
-    private var lastSentThumb: [UInt8]?
+    private var stillGate = StillGate()
     private var lastSize = (0, 0)
     private var landscape = false
     private lazy var h264 = H264Output()
     private var encodeFailures = 0
-    private var refreshDue = false
     private static let maxEncodeFailures = 3
     /// The recording in progress, fed from the capture queue.
     let recorder = Recorder()
@@ -75,21 +76,21 @@ final class DeviceStream: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         output.setSampleBufferDelegate(self, queue: captureQueue)
         guard session.canAddOutput(output) else { throw StartError.failed("the capture output was refused") }
         session.addOutput(output)
+        // Delivered through the main run loop (main.swift runs it).
         NotificationCenter.default.addObserver(forName: AVCaptureDevice.wasDisconnectedNotification, object: nil, queue: nil) { [weak self] note in
             guard let self, (note.object as? AVCaptureDevice)?.uniqueID == self.deviceID else { return }
-            self.recorder.finish()
-            Wire.sendEvent(["event": "fatal", "reason": "device_not_connected", "message": "the iPhone was unplugged"])
-            exit(3)
+            Shutdown.now(self.recorder, code: 3, fatal: Self.unplugged)
         }
         NotificationCenter.default.addObserver(forName: AVCaptureSession.runtimeErrorNotification, object: session, queue: nil) { [weak self] note in
-            self?.recorder.finish()
+            guard let self else { return }
             let error = note.userInfo?[AVCaptureSessionErrorKey] as? NSError
-            Wire.sendEvent(["event": "fatal", "reason": "capture_failed", "message": error?.localizedDescription ?? "capture stopped"])
-            exit(3)
+            Shutdown.now(self.recorder, code: 3, fatal: ("capture_failed", error?.localizedDescription ?? "capture stopped"))
         }
         session.startRunning()
         guard session.isRunning else { throw StartError.failed("the capture session did not start") }
     }
+
+    static let unplugged = (reason: "device_not_connected", message: "the iPhone was unplugged")
 
     func startEncoding() {
         let thread = Thread { [weak self] in self?.encodeLoop() }
@@ -105,8 +106,19 @@ final class DeviceStream: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
             recorder.append(sample)
             cond.lock()
             latest = buffer
+            lastCaptured = buffer
             cond.signal()
             cond.unlock()
+        }
+    }
+
+    // Capture queue: a frame AVFoundation dropped (late, or out of buffers).
+    func captureOutput(_ output: AVCaptureOutput, didDrop sample: CMSampleBuffer, from connection: AVCaptureConnection) {
+        let reason = CMGetAttachment(sample, key: kCMSampleBufferAttachmentKey_DroppedFrameReason, attachmentModeOut: nil)
+        // Late frames are expected (`alwaysDiscardsLateVideoFrames`); running
+        // out of buffers is worth knowing.
+        if let reason = reason as? String, reason != (kCMSampleBufferDroppedFrameReason_FrameWasLate as String) {
+            FileHandle.standardError.write(Data("oximux-device-capture: frame dropped: \(reason)\n".utf8))
         }
     }
 
@@ -134,7 +146,7 @@ final class DeviceStream: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
     /// The current screen as a full-resolution PNG, for screenshots.
     func snapshotPNG() -> Data? {
         cond.lock()
-        let buffer = latest ?? lastSent
+        let buffer = lastCaptured
         cond.unlock()
         guard let buffer else { return nil }
         return Self.withPixels(buffer, scale: 1) { Self.encodeImage($0, type: "public.png", quality: nil) }?.0
@@ -172,16 +184,17 @@ final class DeviceStream: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
         let (scale, format, frameRate) = (self.scale, self.format, self.fps)
         cond.unlock()
 
+        let now = ProcessInfo.processInfo.systemUptime
+        // Paced whether or not it is sent: a still screen is looked at `fps`
+        // times a second, not at the phone's 60.
+        due = max(due + interval, now - interval)
+        let thumb = Self.withPixels(buffer, scale: 1) { Still.thumbnail($0) } ?? []
+        let decision = stillGate.decide(thumb, now: now, force: force)
+        if decision == .skip { return }
         var keyframe = force
-        var sharp = false
-        let thumb = Self.withPixels(buffer, scale: 1) { Still.thumbnail($0) }
-        if !force, let thumb, let previous = lastSentThumb, Still.looksSame(previous, thumb) {
-            // A still screen sends nothing, except in `avcc` the one refresh.
-            guard format == .avcc, refreshDue else { return }
-            keyframe = true
-            sharp = true
-        }
-        due = max(due + interval, ProcessInfo.processInfo.systemUptime - interval)
+        // A settle frame stays on screen: in `avcc`, a sharp key frame.
+        let sharp = decision == .settle && format == .avcc
+        keyframe = keyframe || sharp
 
         let size = (CVPixelBufferGetWidth(buffer), CVPixelBufferGetHeight(buffer))
         if size != lastSize {
@@ -204,7 +217,6 @@ final class DeviceStream: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
                     return
                 }
                 encodeFailures = 0
-                refreshDue = !sharp
                 if let description = packet.description {
                     Wire.sendVideo(width: packet.width, height: packet.height, tag: .description, data: description)
                 }
@@ -228,12 +240,8 @@ final class DeviceStream: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate
                 Self.encodeImage($0, type: "public.jpeg", quality: quality)
             }) else { return }
             Wire.sendFrame(width: w, height: h, jpeg: jpeg)
-            refreshDue = false
         }
-        cond.lock()
-        lastSent = buffer
-        cond.unlock()
-        lastSentThumb = thumb
+        stillGate.sent(thumb, now: now, as: decision)
     }
 
     /// Hand `body` the BGRA pixels of `buffer` at `scale`: the locked pixel

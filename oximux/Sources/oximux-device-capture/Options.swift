@@ -39,15 +39,21 @@ struct CaptureOptions: Equatable {
     }
 }
 
-/// Where a recording may be written: a `.mov` inside the directory OxiMux
-/// names, never anywhere `..` could lead.
+/// Where a recording may be written: a new `.mov` in a folder that exists and
+/// can be written, by an absolute path without `.` or `..`. Which folder is
+/// OxiMux's to choose (its own; the peer is trusted, on our stdin). Nothing
+/// already there is replaced: OxiMux names every movie afresh.
 enum RecordPath {
     static func validate(_ path: String) -> URL? {
         guard path.hasPrefix("/"), path.hasSuffix(".mov"),
               !path.split(separator: "/").contains(where: { $0 == ".." || $0 == "." }) else { return nil }
         let url = URL(fileURLWithPath: path)
+        let folder = url.deletingLastPathComponent().path
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.deletingLastPathComponent().path, isDirectory: &isDir), isDir.boolValue
+        let files = FileManager.default
+        guard files.fileExists(atPath: folder, isDirectory: &isDir), isDir.boolValue,
+              files.isWritableFile(atPath: folder),
+              !files.fileExists(atPath: url.path)
         else { return nil }
         return url
     }

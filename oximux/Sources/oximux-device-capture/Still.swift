@@ -6,6 +6,9 @@ import Accelerate
 /// by up to 51). Averaging 8×8 cells cancels that noise (cells then differ by
 /// at most 22, mostly under 8), while a caret, a digit or a tap highlight —
 /// several pixels wide at 3× — moves a cell far more.
+///
+/// The few columns and rows short of a whole cell at the right and bottom
+/// edges (2 and 4 on a 1290×2796 screen) are not compared.
 enum Still {
     static let cell = 8
     /// Largest cell difference still counted as the same screen.
@@ -33,9 +36,59 @@ enum Still {
         return thumb
     }
 
-    static func looksSame(_ a: [UInt8], _ b: [UInt8]) -> Bool {
+    static func looksSame(_ a: [UInt8], _ b: [UInt8], within limit: Int = tolerance) -> Bool {
         guard a.count == b.count, !a.isEmpty else { return false }
-        for i in a.indices where abs(Int(a[i]) - Int(b[i])) > tolerance { return false }
+        for i in a.indices where abs(Int(a[i]) - Int(b[i])) > limit { return false }
         return true
+    }
+}
+
+/// Which frames of a phone's stream to send. A frame that looks like the last
+/// one sent is skipped — but a change smaller than [`Still.tolerance`] must
+/// not stay unsent for ever (the tail of a fade, a toggle's colour), so:
+/// - after a change, once the screen has held still for [`settleAfter`], one
+///   **settle** frame shows where it came to rest;
+/// - while still, a frame still visibly off the last one sent goes out every
+///   [`idleRefresh`] at most.
+struct StillGate {
+    /// How long the screen must hold still before its settle frame.
+    static let settleAfter = 0.4
+    static let idleRefresh = 2.0
+    /// Frame-to-frame difference read as "holding still", and the drift from
+    /// the last sent frame worth an idle refresh: above the stream's noise
+    /// (cells mostly under 8, rarely to 22), below any real change.
+    static let steady = 12
+
+    enum Decision: Equatable {
+        /// A change: send it.
+        case send
+        /// The still screen once more (`avcc`: a sharp key frame).
+        case settle
+        case skip
+    }
+
+    private var lastSent: [UInt8]?
+    private var lastSentAt = 0.0
+    private var previous: [UInt8]?
+    private var stillSince = 0.0
+    private var settlePending = false
+
+    /// What to do with the frame whose thumbnail is `thumb`, seen at `now`
+    /// (seconds); `force`: it must go out (a new setting, a resume).
+    mutating func decide(_ thumb: [UInt8], now: Double, force: Bool) -> Decision {
+        let moved = previous.map { !Still.looksSame($0, thumb, within: Self.steady) } ?? true
+        if moved { stillSince = now }
+        previous = thumb
+        guard !force, let lastSent, Still.looksSame(lastSent, thumb) else { return .send }
+        if settlePending && now - stillSince >= Self.settleAfter { return .settle }
+        if now - lastSentAt >= Self.idleRefresh && !Still.looksSame(lastSent, thumb, within: Self.steady) { return .settle }
+        return .skip
+    }
+
+    /// The frame decided `decision` went out.
+    mutating func sent(_ thumb: [UInt8], now: Double, as decision: Decision) {
+        lastSent = thumb
+        lastSentAt = now
+        settlePending = decision == .send
     }
 }

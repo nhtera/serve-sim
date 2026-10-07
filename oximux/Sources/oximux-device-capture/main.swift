@@ -28,7 +28,7 @@ signal(SIGPIPE, SIG_IGN)
 /// readable), then exit.
 func fatal(_ reason: String, _ message: String) -> Never {
     Wire.sendEvent(["event": "fatal", "reason": reason, "message": message])
-    exit(3)
+    _exit(3)
 }
 
 let options: CaptureOptions
@@ -49,7 +49,11 @@ var property = CMIOObjectPropertyAddress(
     mSelector: CMIOObjectPropertySelector(kCMIOHardwarePropertyAllowScreenCaptureDevices),
     mScope: CMIOObjectPropertyScope(kCMIOObjectPropertyScopeGlobal),
     mElement: CMIOObjectPropertyElement(kCMIOObjectPropertyElementMain))
-_ = CMIOObjectSetPropertyData(CMIOObjectID(kCMIOObjectSystemObject), &property, 0, nil, UInt32(MemoryLayout<UInt32>.size), &allow)
+let optIn = CMIOObjectSetPropertyData(CMIOObjectID(kCMIOObjectSystemObject), &property, 0, nil, UInt32(MemoryLayout<UInt32>.size), &allow)
+if optIn != 0 {
+    // Tells "the phone never appeared" from "macOS refused the opt-in".
+    FileHandle.standardError.write(Data("oximux-device-capture: screen-capture opt-in failed (OSStatus \(optIn))\n".utf8))
+}
 
 let access = DispatchSemaphore(value: 0)
 var granted = false
@@ -93,4 +97,14 @@ Wire.sendEvent(["event": "ready", "udid": options.udid, "pid": Int(getpid()), "o
 stream.startEncoding()
 DeviceCommands(stream: stream).run()
 
-dispatchMain()
+// The unplug can come as a notification or not at all (it is delivered
+// through this run loop, and only while one runs): check the phone itself
+// every second too.
+Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+    if !device.isConnected {
+        Shutdown.now(stream.recorder, code: 3, fatal: DeviceStream.unplugged)
+    }
+}
+// A run loop, not `dispatchMain()`: CoreMediaIO and AVFoundation deliver
+// device changes through the main run loop (it serves the main queue too).
+RunLoop.main.run()

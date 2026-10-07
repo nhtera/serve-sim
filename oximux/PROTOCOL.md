@@ -114,13 +114,13 @@ oximux-device-capture --version    # "oximux-device-capture <version>"
 | `camera_denied` | macOS denied the camera to this bundle (System Settings › Privacy & Security › Camera) |
 | `device_busy` | another app holds the phone's screen (QuickTime's movie recording, say) |
 
-**Frames rotate with the phone.** Unlike a simulator's framebuffer, the phone's frames already show the screen as held. So `size` is the **displayed** size (landscape when the phone is), nothing is rotated, and `orientation` is sent when the aspect flips: `1` portrait, `3` landscape (the helper cannot tell which way). The phone sends about 60 frames a second whatever the screen does: the helper paces to `fps` and sends nothing for an unchanged screen (in `avcc`, one sharp refresh as the sim helper does).
+**Frames rotate with the phone.** Unlike a simulator's framebuffer, the phone's frames already show the screen as held. So `size` is the **displayed** size (landscape when the phone is), nothing is rotated, and `orientation` is sent when the aspect flips: `1` portrait, `3` landscape (the helper cannot tell which way). The phone sends about 60 frames a second whatever the screen does, and never the same bytes twice (its USB stream is lossy): the helper paces to `fps` and compares 8×8-averaged thumbnails, so an unchanged screen sends nothing. After a change, once the screen has held still for 0.4 s, one **settle** frame shows where it came to rest (in `avcc` a sharp key frame, as the sim helper's refresh); a smaller change made while still (a toggle's colour) goes out within 2 s.
 
 **Commands.** `ping`, `configure` (`scale`, `fps`, `format`; an `orientation` is refused `unsupported`), `pause` / `resume`, `screenshot` (PNG of the latest frame, full resolution). Every input and accessibility command (`touch`, `multitouch`, `scroll`, `key`, `button`, `ax_describe`, `ax_frontmost`, `memory_warning`) answers `{"ok": false, "error": "unsupported"}`. Two more, this helper only:
 
 | cmd | fields | reply |
 |---|---|---|
-| `record_start` | `path`: absolute, ending `.mov`, in an existing folder, no `.`/`..` components | `{"ok": true}`; recording continues while paused |
+| `record_start` | `path`: absolute, ending `.mov`, no `.`/`..` components, **not already there** (nothing is replaced), in a folder that exists and can be written. Which folder is the client's to choose: the helper is a privacy-separate app, so OxiMux records into its own folder and moves the movie | `{"ok": true}`; recording continues while paused |
 | `record_stop` | none | `{"ok": true, "path": "…", "duration_ms": n}`, or a failure (nothing recorded, say, because the screen was off) |
 
-A recording is H.264 in a QuickTime movie, re-encoded from the captured frames (about +7 points of CPU), one size per movie. stdin EOF or an unplug finalizes it before the helper exits.
+A recording is H.264 in a QuickTime movie, re-encoded from the captured frames (about +7 points of CPU), one size per movie (frames of another size, a phone turned mid-recording, are skipped). stdin EOF, an unplug or a capture error finalizes it before the helper exits — whichever comes first; the others wait for it. When a movie was finalized that way, `{"event": "recorded", "path": "…", "duration_ms": n}` precedes the `fatal` (or the exit).

@@ -24,8 +24,8 @@ final class DeviceCommands: @unchecked Sendable {
                 case .malformed:
                     Self.fail(nil, "malformed command")
                 case .closed:
-                    queue.sync { _ = stream.recorder.finish() }
-                    _exit(0)
+                    // After the commands already queued (a `record_stop`).
+                    queue.sync { Shutdown.now(stream.recorder, code: 0) }
                 }
             }
         }.start()
@@ -37,7 +37,7 @@ final class DeviceCommands: @unchecked Sendable {
         switch raw["cmd"] as? String {
         case "record_start":
             guard let path = raw["path"] as? String, let url = RecordPath.validate(path) else {
-                return fail(id, "record_start needs an absolute .mov path in an existing folder, without ..")
+                return fail(id, "record_start needs a new .mov, by an absolute path without . or .., in a folder that exists and can be written")
             }
             if let why = stream.recorder.start(url) { return fail(id, why) }
             stream.recordingChanged()
@@ -55,12 +55,20 @@ final class DeviceCommands: @unchecked Sendable {
         switch ParsedCommand.parse(raw) {
         case .failure(let error):
             fail(id, error.description)
+        case .success(.screenshot):
+            // A full-resolution PNG takes ~100 ms: never in front of a
+            // `ping` or a `pause`.
+            DispatchQueue.global(qos: .userInitiated).async { respond(id, answer(.screenshot, stream: stream)) }
         case .success(let command):
-            switch answer(command, stream: stream) {
-            case .ok(let result): reply(id, result)
-            case .fail(let why): fail(id, why)
-            case .none: break
-            }
+            respond(id, answer(command, stream: stream))
+        }
+    }
+
+    static func respond(_ id: Int?, _ answer: Answer) {
+        switch answer {
+        case .ok(let result): reply(id, result)
+        case .fail(let why): fail(id, why)
+        case .none: break
         }
     }
 
