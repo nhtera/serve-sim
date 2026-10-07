@@ -38,9 +38,19 @@ enum HTTP {
         for line in lines.dropFirst() {
             guard let colon = line.firstIndex(of: ":") else { return .invalid("a header line has no colon") }
             let name = line[..<colon].trimmingCharacters(in: .whitespaces).lowercased()
+            // One reading only: no chunked bodies, no second length or token.
+            if name == "transfer-encoding" { return .invalid("chunked bodies are not accepted") }
+            if headers[name] != nil, ["content-length", "authorization"].contains(name) {
+                return .invalid("`\(name)` is given twice")
+            }
             headers[name] = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
         }
         return .head(Head(method: String(start[0]), target: String(start[1]), headers: headers), bodyStart: end.upperBound - buffer.startIndex)
+    }
+
+    /// Whether the whole request head has arrived (valid or not).
+    static func headComplete(_ buffer: Data) -> Bool {
+        buffer.range(of: Data("\r\n\r\n".utf8)) != nil || buffer.count > maxHead
     }
 
     /// Whether `head` carries `Authorization: Bearer <token>`, compared in

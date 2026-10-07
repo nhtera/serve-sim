@@ -30,7 +30,8 @@ final class RunnerSession: XCTestCase {
         try server.start(
             ready: { port in
                 print("OXIMUX_RUNNER_LISTENING port=\(port)")
-                NSLog("OXIMUX_RUNNER_LISTENING port=%d", Int(port))
+                fflush(stdout)
+                NSLog("OXIMUX_RUNNER_LISTENING port=%ld", Int(port))
             },
             failed: { error in
                 print("OXIMUX_RUNNER_FAILED \(error)")

@@ -25,6 +25,7 @@ struct RunnerError: Error, Equatable {
     }
 
     static let busy = Self(code: "RUNNER_BUSY", message: "another command is still running", hint: "retry when it has finished")
+    static let inProgress = Self(code: "IN_PROGRESS", message: "this command is still running", hint: "ask `status` with its commandId")
     static let wedged = Self(code: "RUNNER_WEDGED", message: "a command did not finish in time", hint: "restart the runner")
 
     static func backgrounded(_ app: String) -> Self {
@@ -73,6 +74,18 @@ struct RunnerCommand {
         guard let n = fields[key] as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
         let value = n.doubleValue
         return value.isFinite ? value : nil
+    }
+
+    /// A whole number in `range`, `fallback` when absent; anything else (a
+    /// fraction, out of range, not a number) is a bad request — never a
+    /// conversion that traps.
+    func integer(_ key: String, in range: ClosedRange<Int>, fallback: Int) throws -> Int {
+        guard fields[key] != nil else { return fallback }
+        guard let value = number(key), value.rounded() == value,
+              value >= Double(range.lowerBound), value <= Double(range.upperBound) else {
+            throw RunnerError.badRequest("`\(key)` is a whole number from \(range.lowerBound) to \(range.upperBound)")
+        }
+        return Int(value)
     }
 
     func point(_ key: String) -> (x: Double, y: Double)? {

@@ -19,8 +19,7 @@ enum TextEntry {
     }
 
     static func delete(_ command: RunnerCommand) throws -> Done {
-        let count = Int(command.number("count") ?? 1)
-        guard (1...500).contains(count) else { throw RunnerError.badRequest("`count` is 1–500") }
+        let count = try command.integer("count", in: 1...500, fallback: 1)
         let (app, reactivated) = try Commands.target(command, gesture: true)
         app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: count))
         return Done(reactivated: reactivated)

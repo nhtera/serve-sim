@@ -26,6 +26,10 @@ permissions:
 
 env:
   XCODE_MAJOR: "26"
+  # The xcodegen that generated the committed project (release zip, pinned):
+  # a newer one may write it differently.
+  XCODEGEN_VERSION: "2.45.4"
+  XCODEGEN_SHA256: "090ec29491aad50aec10631bf6e62253fed733c50f3aab0f5ffc86bc170bdbef"
 
 jobs:
   build:
@@ -52,8 +56,11 @@ jobs:
       # The project committed must be the one project.yml generates.
       - name: Project is current
         run: |
-          brew install xcodegen
-          cd oximux/ios-runner && xcodegen generate --quiet
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/xcodegen.zip" \
+            "https://github.com/yonaskolb/XcodeGen/releases/download/${XCODEGEN_VERSION}/xcodegen.zip"
+          echo "${XCODEGEN_SHA256}  $RUNNER_TEMP/xcodegen.zip" | shasum -a 256 -c
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          cd oximux/ios-runner && "$RUNNER_TEMP/xcodegen/bin/xcodegen" generate --quiet
           git diff --exit-code -- OximuxRunner.xcodeproj \
             || { echo "::error::OximuxRunner.xcodeproj is stale: run xcodegen generate in oximux/ios-runner"; exit 1; }
 
@@ -82,7 +89,15 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          fetch-depth: 0
           persist-credentials: false
+
+      - name: Tag must be on the oximux branch
+        run: |
+          git fetch --no-tags origin oximux
+          if ! git merge-base --is-ancestor HEAD FETCH_HEAD; then
+            echo "::error::$GITHUB_REF_NAME is not on branch oximux; refusing to release"; exit 1
+          fi
 
       - name: Pack
         id: pkg
@@ -90,7 +105,12 @@ jobs:
           version="${GITHUB_REF_NAME#ios-runner-v}"
           declared=$(sed -n 's/^    static let version = "\(.*\)"$/\1/p' oximux/ios-runner/OximuxRunnerUITests/Protocol.swift)
           [[ "$declared" == "$version" ]] || { echo "::error::tag $GITHUB_REF_NAME disagrees with RunnerProtocol.version $declared"; exit 1; }
+          marketing=$(sed -n 's/^    MARKETING_VERSION: "\(.*\)"$/\1/p' oximux/ios-runner/project.yml)
+          [[ "$marketing" == "$version" ]] || { echo "::error::tag $GITHUB_REF_NAME disagrees with MARKETING_VERSION $marketing"; exit 1; }
           oximux/scripts/pack-runner.sh "$version" dist
+          # Reproducible, checked where it is published: packed again, compared.
+          oximux/scripts/pack-runner.sh "$version" "$RUNNER_TEMP/again"
+          cmp "dist/oximux-ios-runner-src-$version.tar.gz" "$RUNNER_TEMP/again/oximux-ios-runner-src-$version.tar.gz"
           echo "name=oximux-ios-runner-src-$version" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 

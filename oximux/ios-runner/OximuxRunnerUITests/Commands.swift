@@ -50,40 +50,65 @@ final class Commands: @unchecked Sendable {
         case .success(let decoded): command = decoded
         case .failure(let error): return Envelope.failure(error)
         }
-        if command.isMutating, let id = command.id, let earlier = journal.reply(for: id) {
-            return earlier
-        }
-        let reply: Data
         switch command.name {
         case "status":
-            reply = status(command)
+            return status(command)
         case "shutdown":
-            onShutdown()
-            reply = Envelope.ok()
+            // The reply first: the run ends right after.
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.5, execute: onShutdown)
+            return Envelope.ok()
         default:
-            reply = gate.run(timeout: Self.deadline(command)) { Self.perform(command) }
+            break
         }
-        if command.isMutating, let id = command.id {
-            journal.record(reply, for: id)
+        guard command.isMutating, let id = command.id else {
+            return reply(gate.run(timeout: Self.deadline(command)) { Self.perform(command) })
         }
-        return reply
+        switch journal.begin(id) {
+        case .done(let earlier): return earlier
+        case .pending: return Envelope.failure(.inProgress)
+        case .fresh: break
+        }
+        let journal = self.journal
+        let outcome = gate.run(timeout: Self.deadline(command), late: { journal.finish(id, $0) }) { Self.perform(command) }
+        switch outcome {
+        case .finished(let reply): journal.finish(id, reply)
+        // Never ran: the same id may come again.
+        case .busy: journal.release(id)
+        // Still running: its real reply is kept when it ends (`late`).
+        case .wedged: break
+        }
+        return reply(outcome)
     }
 
-    /// The protocol, and the reply an earlier command got (if this runner
-    /// still has it).
+    private func reply(_ outcome: MainThreadGate.Outcome) -> Data {
+        switch outcome {
+        case .finished(let reply): reply
+        case .busy: Envelope.failure(.busy)
+        case .wedged: Envelope.failure(.wedged)
+        }
+    }
+
+    /// The protocol, and what became of an earlier command: `done` with its
+    /// reply, `pending` while it runs, or `null` when unknown here.
     private func status(_ command: RunnerCommand) -> Data {
         var data: [String: Any] = ["protocol": RunnerProtocol.name, "version": RunnerProtocol.version]
         if let id = command.string("statusCommandId") {
-            let earlier = journal.reply(for: id).flatMap { try? JSONSerialization.jsonObject(with: $0) }
-            data["reply"] = earlier ?? NSNull()
+            switch journal.entry(id) {
+            case .pending?: data["command"] = ["state": "pending"]
+            case .done(let reply)?:
+                data["command"] = ["state": "done", "reply": (try? JSONSerialization.jsonObject(with: reply)) ?? NSNull()]
+            case nil: data["command"] = NSNull()
+            }
         }
         return Envelope.ok(data)
     }
 
-    /// How long a command may hold the main thread: its own length, plus room.
+    /// How long a command may hold the main thread: its own length (a drag's
+    /// time, ~50 ms a typed character), plus room.
     static func deadline(_ command: RunnerCommand) -> TimeInterval {
-        let ms = (command.number("durationMs") ?? 0) + (command.number("holdMs") ?? 0) + (command.number("settle") ?? 0)
-        return 30 + min(ms, 60_000) / 1000
+        let ms = ["durationMs", "holdMs", "settle"].reduce(0) { $0 + max(0, command.number($1) ?? 0) }
+        let typing = Double(command.string("text")?.count ?? 0) * 50
+        return 30 + min(ms + typing, 300_000) / 1000
     }
 
     // Main thread.

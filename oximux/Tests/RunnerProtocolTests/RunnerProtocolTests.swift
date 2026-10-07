@@ -97,15 +97,53 @@ final class RunnerProtocolTests: XCTestCase {
         XCTAssertEqual(server.next(request(length: 2, body: "{}")), .handle(Data("{}".utf8)))
     }
 
-    func testTheJournalKeepsTheNewest() {
+    /// An id is taken before its command runs: a copy meanwhile is told it
+    /// is running, a command that never ran gives its id back, and a
+    /// finished one answers every copy after.
+    func testTheJournalRunsEachIdOnce() {
+        let journal = Journal()
+        XCTAssertEqual(journal.begin("a"), .fresh)
+        XCTAssertEqual(journal.begin("a"), .pending)
+        XCTAssertEqual(journal.entry("a"), .pending)
+        journal.finish("a", Data("done".utf8))
+        XCTAssertEqual(journal.begin("a"), .done(Data("done".utf8)))
+        XCTAssertEqual(journal.begin("b"), .fresh)
+        journal.release("b") // turned away busy: never ran
+        XCTAssertEqual(journal.begin("b"), .fresh)
+        XCTAssertNil(journal.entry("c"))
+    }
+
+    func testTheJournalKeepsTheNewestAndEveryRunningOne() {
         let journal = Journal(capacity: 2)
-        journal.record(Data("a".utf8), for: "1")
-        journal.record(Data("b".utf8), for: "2")
-        journal.record(Data("c".utf8), for: "3")
-        XCTAssertNil(journal.reply(for: "1"))
-        XCTAssertEqual(journal.reply(for: "3"), Data("c".utf8))
-        journal.record(Data("d".utf8), for: "3")
-        XCTAssertEqual(journal.reply(for: "2"), Data("b".utf8), "a replaced reply takes no new slot")
+        XCTAssertEqual(journal.begin("running"), .fresh)
+        journal.finish("1", Data("a".utf8))
+        journal.finish("2", Data("b".utf8))
+        journal.finish("3", Data("c".utf8))
+        XCTAssertEqual(journal.entry("running"), .pending, "a command still running is never dropped")
+        XCTAssertNil(journal.entry("1"))
+        XCTAssertNil(journal.entry("2"))
+        XCTAssertEqual(journal.entry("3"), .done(Data("c".utf8)))
+    }
+
+    /// A whole number in range, or a bad request — never a trap.
+    func testIntegersAreCheckedNotConverted() throws {
+        let command = try RunnerCommand.decode(Data(#"{"command":"tap","taps":1e300,"half":1.5,"ok":2}"#.utf8)).get()
+        XCTAssertEqual(try command.integer("ok", in: 1...2, fallback: 1), 2)
+        XCTAssertEqual(try command.integer("absent", in: 1...2, fallback: 1), 1)
+        XCTAssertThrowsError(try command.integer("taps", in: 1...2, fallback: 1))
+        XCTAssertThrowsError(try command.integer("half", in: 1...2, fallback: 1))
+    }
+
+    /// One reading of every request: no chunked body, no second length or
+    /// token; and the head is "seen" once it is whole.
+    func testAmbiguousHeadsAreRefused() {
+        for head in ["POST / HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n",
+                     "POST / HTTP/1.1\r\nContent-Length: 1\r\nContent-Length: 2\r\n\r\n",
+                     "POST / HTTP/1.1\r\nAuthorization: Bearer a\r\nAuthorization: Bearer b\r\n\r\n"] {
+            guard case .invalid = HTTP.parseHead(Data(head.utf8)) else { return XCTFail(head) }
+        }
+        XCTAssertFalse(HTTP.headComplete(Data("POST / HTTP/1.1\r\n".utf8)))
+        XCTAssertTrue(HTTP.headComplete(Data("POST / HTTP/1.1\r\n\r\n".utf8)))
     }
 
     /// The server on this Mac's loopback: a request with the token is

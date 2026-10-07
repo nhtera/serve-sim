@@ -1,12 +1,25 @@
 import Foundation
 
-/// Send-once: the reply to each mutating command, by its `commandId`. A
-/// command sent again (the reply was lost on the way back) is answered from
-/// here, not done twice; `status{statusCommandId}` reads it. Bounded: the
-/// oldest replies go first.
+/// Send-once: each mutating command's reply, by its `commandId`. A command
+/// sent again (its reply was lost on the way back) is answered from here, not
+/// done twice; `status{statusCommandId}` reads it. An id is taken before its
+/// command runs, so a second copy arriving meanwhile is told it is still
+/// running. Bounded: the oldest finished replies go first.
 final class Journal: @unchecked Sendable {
+    enum Entry: Equatable {
+        case pending
+        case done(Data)
+    }
+
+    enum Begin: Equatable {
+        /// Yours to run.
+        case fresh
+        case pending
+        case done(Data)
+    }
+
     private let lock = NSLock()
-    private var replies: [String: Data] = [:]
+    private var entries: [String: Entry] = [:]
     private var order: [String] = []
     private let capacity: Int
 
@@ -14,18 +27,47 @@ final class Journal: @unchecked Sendable {
         self.capacity = capacity
     }
 
-    func reply(for id: String) -> Data? {
+    /// Take `id` for a command about to run, unless it already ran or runs.
+    func begin(_ id: String) -> Begin {
         lock.lock(); defer { lock.unlock() }
-        return replies[id]
+        switch entries[id] {
+        case .pending?: return .pending
+        case .done(let reply)?: return .done(reply)
+        case nil:
+            entries[id] = .pending
+            order.append(id)
+            trim()
+            return .fresh
+        }
     }
 
-    func record(_ reply: Data, for id: String) {
+    /// The command `id` finished with `reply`.
+    func finish(_ id: String, _ reply: Data) {
         lock.lock(); defer { lock.unlock() }
-        if replies.updateValue(reply, forKey: id) == nil {
+        if entries.updateValue(.done(reply), forKey: id) == nil {
             order.append(id)
+            trim()
         }
-        while order.count > capacity {
-            replies.removeValue(forKey: order.removeFirst())
+    }
+
+    /// The command `id` never ran (the runner was busy): it may be sent again.
+    func release(_ id: String) {
+        lock.lock(); defer { lock.unlock() }
+        if entries[id] == .pending {
+            entries[id] = nil
+            order.removeAll { $0 == id }
+        }
+    }
+
+    func entry(_ id: String) -> Entry? {
+        lock.lock(); defer { lock.unlock() }
+        return entries[id]
+    }
+
+    /// Called with `lock` held. A command still running is never dropped.
+    private func trim() {
+        while order.count > capacity, let oldest = order.firstIndex(where: { entries[$0] != .pending }) {
+            entries[order.remove(at: oldest)] = nil
         }
     }
 }

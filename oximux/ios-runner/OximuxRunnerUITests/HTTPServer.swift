@@ -23,6 +23,15 @@ final class HTTPServer: @unchecked Sendable {
     /// How long one connection may take, request to reply (a long drag
     /// included); then it is dropped.
     static let connectionLimit: TimeInterval = 120
+    /// How long a connection may take to send its request head: a peer that
+    /// says nothing must not hold one of the few slots for long.
+    static let headLimit: TimeInterval = 5
+
+    /// One connection's progress (`queue` only).
+    private final class Exchange {
+        var buffer = Data()
+        var headSeen = false
+    }
 
     init(token: String, handler: @escaping Handler) {
         self.token = token
@@ -36,7 +45,6 @@ final class HTTPServer: @unchecked Sendable {
         // 127.0.0.1, nothing off the phone can connect. (Not `acceptLocalOnly`
         // on top: in a simulator its policy refuses even loopback peers.)
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
-        parameters.allowLocalEndpointReuse = true
         let listener = try NWListener(using: parameters)
         listener.newConnectionHandler = { [weak self] connection in self?.accept(connection) }
         listener.stateUpdateHandler = { state in
@@ -59,7 +67,9 @@ final class HTTPServer: @unchecked Sendable {
         let over = open > RunnerProtocol.maxConnections
         connection.stateUpdateHandler = { [weak self] state in
             switch state {
-            case .cancelled, .failed: self?.open -= 1
+            // A failed connection is cancelled too: counted out once, there.
+            case .failed: connection.cancel()
+            case .cancelled: self?.open -= 1
             default: break
             }
         }
@@ -67,20 +77,23 @@ final class HTTPServer: @unchecked Sendable {
         if over {
             return reply(connection, HTTP.response(503))
         }
+        let exchange = Exchange()
+        queue.asyncAfter(deadline: .now() + Self.headLimit) { if !exchange.headSeen { connection.cancel() } }
         queue.asyncAfter(deadline: .now() + Self.connectionLimit) { connection.cancel() }
-        read(connection, Data())
+        read(connection, exchange)
     }
 
-    private func read(_ connection: NWConnection, _ buffer: Data) {
+    private func read(_ connection: NWConnection, _ exchange: Exchange) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 << 10) { [weak self] chunk, _, done, error in
             guard let self else { return connection.cancel() }
-            var buffer = buffer
-            if let chunk { buffer.append(chunk) }
-            switch self.next(buffer) {
+            if let chunk { exchange.buffer.append(chunk) }
+            let step = self.next(exchange.buffer)
+            if step != .needMore || HTTP.headComplete(exchange.buffer) { exchange.headSeen = true }
+            switch step {
             case .needMore where done || error != nil:
                 connection.cancel()
             case .needMore:
-                self.read(connection, buffer)
+                self.read(connection, exchange)
             case .reply(let response):
                 self.reply(connection, response)
             case .handle(let body):

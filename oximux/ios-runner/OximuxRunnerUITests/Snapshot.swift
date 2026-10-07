@@ -6,6 +6,8 @@ enum Snapshot {
     static func viewport(_ command: RunnerCommand) throws -> Done {
         let (app, _) = try Commands.target(command, gesture: false)
         let frame = app.frame
+        // XCTest answers an empty frame when it could not read one.
+        guard frame.width > 0, frame.height > 0 else { throw RunnerError.xctest("the app's frame could not be read") }
         return Done(data: [
             "x": frame.origin.x, "y": frame.origin.y, "width": frame.width, "height": frame.height,
             "orientation": XCUIDevice.shared.orientation.rawValue,

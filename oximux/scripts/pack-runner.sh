@@ -13,6 +13,11 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 version="${1:?usage: pack-runner.sh <version> [<out dir>]}"
+# Committed files, as committed: the contents come from the worktree.
+if ! git diff --quiet HEAD -- oximux/ios-runner LICENSE; then
+    echo "error: oximux/ios-runner has uncommitted changes; commit them first" >&2
+    exit 1
+fi
 out="${2:-.}"
 name="oximux-ios-runner-src-${version}"
 mkdir -p "$out"

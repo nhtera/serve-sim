@@ -8,15 +8,10 @@ enum Gestures {
 
     static func tap(_ command: RunnerCommand) throws -> Done {
         let (x, y) = (try command.require(command.number("x"), "x"), try command.require(command.number("y"), "y"))
-        let taps = Int(command.number("taps") ?? 1)
-        guard (1...3).contains(taps) else { throw RunnerError.badRequest("`taps` is 1, 2 or 3") }
+        let taps = try command.integer("taps", in: 1...2, fallback: 1)
         let (app, reactivated) = try Commands.target(command, gesture: true)
         let point = Commands.coordinate(app, x, y)
-        if taps == 2 {
-            point.doubleTap()
-        } else {
-            for _ in 0..<taps { point.tap() }
-        }
+        if taps == 2 { point.doubleTap() } else { point.tap() }
         return Done(reactivated: reactivated)
     }
 
@@ -62,8 +57,7 @@ enum Gestures {
             device.press(.volumeDown)
         #endif
         case "action":
-            // An iPhone without one: XCTest raises, the guard reports it.
-            guard #available(iOS 17.0, *) else { throw unsupported(name) }
+            // An iPhone without one: XCTest fails the press (XCTEST_FAILED).
             device.press(.action)
         default:
             throw unsupported(name)

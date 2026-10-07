@@ -48,3 +48,8 @@ schemes:
         OximuxRunnerUITests: [test]
     test:
       targets: [OximuxRunnerUITests]
+      # The runner is up for hours on the user's own phone: XCTest must not
+      # record its screen (what they type included), and keeps none of what
+      # it captures (the runner adds no attachments of its own).
+      preferredScreenCaptureFormat: screenshots
+      systemAttachmentLifetime: keepNever
