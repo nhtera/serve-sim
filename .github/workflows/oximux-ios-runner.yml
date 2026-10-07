@@ -1,0 +1,113 @@
+# The iPhone control runner (oximux/ios-runner): an XCUITest bundle OxiMux
+# builds and signs on the user's Mac, so it is released as SOURCES — a
+# reproducible tarball (oximux/scripts/pack-runner.sh) with its sha256 and a
+# build-provenance attestation. OxiMux pins the sha256; a published asset is
+# never replaced (cut a new version instead). See oximux/ios-runner/PROTOCOL.md.
+name: oximux-ios-runner
+
+on:
+  push:
+    branches: [oximux]
+    tags: ["ios-runner-v*"]
+    paths: ["oximux/ios-runner/**", "oximux/scripts/pack-runner.sh", "oximux/Sources/OximuxRunnerCore/**",
+            "oximux/Tests/RunnerProtocolTests/**", ".github/workflows/oximux-ios-runner.yml"]
+  pull_request:
+    branches: [oximux]
+    paths: ["oximux/ios-runner/**", "oximux/scripts/pack-runner.sh", "oximux/Sources/OximuxRunnerCore/**",
+            "oximux/Tests/RunnerProtocolTests/**", ".github/workflows/oximux-ios-runner.yml"]
+  workflow_dispatch: {}
+
+concurrency:
+  group: oximux-ios-runner-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+env:
+  XCODE_MAJOR: "26"
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode ${{ env.XCODE_MAJOR }}.x
+        run: |
+          shopt -s nullglob
+          candidates=(/Applications/Xcode_"${XCODE_MAJOR}"*.app)
+          if (( ${#candidates[@]} == 0 )); then
+            echo "::error::no Xcode ${XCODE_MAJOR}.x on this runner"; exit 1
+          fi
+          sudo xcode-select -s "$(printf '%s\n' "${candidates[@]}" | sort -V | tail -1)"
+          xcodebuild -version
+
+      - name: Protocol tests (macOS)
+        run: swift test --filter RunnerProtocolTests
+
+      # The project committed must be the one project.yml generates.
+      - name: Project is current
+        run: |
+          brew install xcodegen
+          cd oximux/ios-runner && xcodegen generate --quiet
+          git diff --exit-code -- OximuxRunner.xcodeproj \
+            || { echo "::error::OximuxRunner.xcodeproj is stale: run xcodegen generate in oximux/ios-runner"; exit 1; }
+
+      # Compiles for a phone, unsigned (signing is the user's, in OxiMux).
+      - name: Build for testing (generic iOS, unsigned)
+        run: |
+          xcodebuild build-for-testing -project oximux/ios-runner/OximuxRunner.xcodeproj -scheme OximuxRunner \
+            -destination generic/platform=iOS -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO -quiet
+
+      # The tarball is byte-for-byte reproducible: packed twice, compared.
+      - name: Pack (reproducible)
+        run: |
+          oximux/scripts/pack-runner.sh 0.0.0 "$RUNNER_TEMP/a"
+          oximux/scripts/pack-runner.sh 0.0.0 "$RUNNER_TEMP/b"
+          cmp "$RUNNER_TEMP/a/oximux-ios-runner-src-0.0.0.tar.gz" "$RUNNER_TEMP/b/oximux-ios-runner-src-0.0.0.tar.gz"
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/ios-runner-v')
+    needs: build
+    runs-on: macos-26
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Pack
+        id: pkg
+        run: |
+          version="${GITHUB_REF_NAME#ios-runner-v}"
+          declared=$(sed -n 's/^    static let version = "\(.*\)"$/\1/p' oximux/ios-runner/OximuxRunnerUITests/Protocol.swift)
+          [[ "$declared" == "$version" ]] || { echo "::error::tag $GITHUB_REF_NAME disagrees with RunnerProtocol.version $declared"; exit 1; }
+          oximux/scripts/pack-runner.sh "$version" dist
+          echo "name=oximux-ios-runner-src-$version" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: dist/${{ steps.pkg.outputs.name }}.tar.gz
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAME: ${{ steps.pkg.outputs.name }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          # 0.x releases are pre-releases until the protocol settles.
+          pre=()
+          [[ "$VERSION" == 0.* ]] && pre=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" "dist/$NAME.tar.gz" "dist/$NAME.tar.gz.sha256" \
+            "${pre[@]}" --verify-tag \
+            --title "oximux-ios-runner $VERSION" \
+            --notes "Sources of the OxiMux iPhone control runner (protocol oximux-runner/1), built from \`$(git rev-parse --short HEAD)\`. OxiMux builds and signs it on the user's Mac. See oximux/ios-runner/PROTOCOL.md and NOTICE."

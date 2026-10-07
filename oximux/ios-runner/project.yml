@@ -1,0 +1,50 @@
+# xcodegen spec for the iPhone control runner. The generated
+# OximuxRunner.xcodeproj is committed (the user's Mac builds it without
+# xcodegen); regenerate with `xcodegen generate` after editing this file.
+#
+# No team, no real bundle ids: OxiMux passes DEVELOPMENT_TEAM and
+# OXIMUX_BUNDLE_PREFIX (dev.oximux.runner.t<team>) when it builds the runner
+# for the user's phone.
+name: OximuxRunner
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    OXIMUX_BUNDLE_PREFIX: dev.oximux.runner
+    CODE_SIGN_STYLE: Automatic
+    GENERATE_INFOPLIST_FILE: YES
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  OximuxRunner:
+    type: application
+    platform: iOS
+    sources: [OximuxRunner]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(OXIMUX_BUNDLE_PREFIX)
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_CFBundleDisplayName: OxiMux Runner
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+  OximuxRunnerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [OximuxRunnerUITests]
+    dependencies:
+      - target: OximuxRunner
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(OXIMUX_BUNDLE_PREFIX).uitests
+        SWIFT_OBJC_BRIDGING_HEADER: OximuxRunnerUITests/BridgingHeader.h
+        TEST_TARGET_NAME: OximuxRunner
+schemes:
+  OximuxRunner:
+    build:
+      targets:
+        OximuxRunner: all
+        OximuxRunnerUITests: [test]
+    test:
+      targets: [OximuxRunnerUITests]

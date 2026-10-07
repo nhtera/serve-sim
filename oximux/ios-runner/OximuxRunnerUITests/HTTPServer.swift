@@ -1,0 +1,124 @@
+import Foundation
+import Network
+
+/// The runner's command server: HTTP/1.1 on the phone's **loopback only**
+/// (usbmux reaches it from the Mac; nothing on the network can), on a port
+/// the system picks. One request per connection; every request must carry
+/// the bearer token (401 with no body otherwise); a body over
+/// `RunnerProtocol.maxBody` gets 413, a connection over
+/// `RunnerProtocol.maxConnections` gets 503.
+final class HTTPServer: @unchecked Sendable {
+    /// Turns an authorized request body into the reply's JSON body. Called
+    /// on a worker queue, never the listener's; it may block.
+    typealias Handler = @Sendable (Data) -> Data
+
+    private let token: String
+    private let handler: Handler
+    private let queue = DispatchQueue(label: "oximux.runner.http")
+    private let workers = DispatchQueue(label: "oximux.runner.work", attributes: .concurrent)
+    private var listener: NWListener?
+    // `queue` only.
+    private var open = 0
+
+    /// How long one connection may take, request to reply (a long drag
+    /// included); then it is dropped.
+    static let connectionLimit: TimeInterval = 120
+
+    init(token: String, handler: @escaping Handler) {
+        self.token = token
+        self.handler = handler
+    }
+
+    /// Listen on 127.0.0.1; `ready` gets the port.
+    func start(ready: @escaping @Sendable (UInt16) -> Void, failed: @escaping @Sendable (Error) -> Void) throws {
+        let parameters = NWParameters.tcp
+        // NWListener binds every interface unless told otherwise. Bound to
+        // 127.0.0.1, nothing off the phone can connect. (Not `acceptLocalOnly`
+        // on top: in a simulator its policy refuses even loopback peers.)
+        parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
+        parameters.allowLocalEndpointReuse = true
+        let listener = try NWListener(using: parameters)
+        listener.newConnectionHandler = { [weak self] connection in self?.accept(connection) }
+        listener.stateUpdateHandler = { state in
+            switch state {
+            case .ready: if let port = listener.port?.rawValue { ready(port) }
+            case .failed(let error): failed(error)
+            default: break
+            }
+        }
+        self.listener = listener
+        listener.start(queue: queue)
+    }
+
+    func stop() {
+        listener?.cancel()
+    }
+
+    private func accept(_ connection: NWConnection) {
+        open += 1
+        let over = open > RunnerProtocol.maxConnections
+        connection.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .cancelled, .failed: self?.open -= 1
+            default: break
+            }
+        }
+        connection.start(queue: queue)
+        if over {
+            return reply(connection, HTTP.response(503))
+        }
+        queue.asyncAfter(deadline: .now() + Self.connectionLimit) { connection.cancel() }
+        read(connection, Data())
+    }
+
+    private func read(_ connection: NWConnection, _ buffer: Data) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 << 10) { [weak self] chunk, _, done, error in
+            guard let self else { return connection.cancel() }
+            var buffer = buffer
+            if let chunk { buffer.append(chunk) }
+            switch self.next(buffer) {
+            case .needMore where done || error != nil:
+                connection.cancel()
+            case .needMore:
+                self.read(connection, buffer)
+            case .reply(let response):
+                self.reply(connection, response)
+            case .handle(let body):
+                self.workers.async {
+                    let reply = HTTP.response(200, self.handler(body))
+                    self.queue.async { self.reply(connection, reply) }
+                }
+            }
+        }
+    }
+
+    enum Step: Equatable {
+        case needMore
+        case reply(Data)
+        case handle(Data)
+    }
+
+    /// What to do with what has arrived so far. Pure: tested on macOS.
+    func next(_ buffer: Data) -> Step {
+        switch HTTP.parseHead(buffer) {
+        case .incomplete: return .needMore
+        case .invalid: return .reply(HTTP.response(400))
+        case let .head(head, bodyStart):
+            // Auth before anything else is looked at: a stranger learns
+            // nothing, not even whether the body was too big.
+            guard HTTP.authorized(head, token: token) else { return .reply(HTTP.response(401)) }
+            guard head.method == "POST" else { return .reply(HTTP.response(405)) }
+            guard head.target == "/" else { return .reply(HTTP.response(404)) }
+            guard let length = head.contentLength, length >= 0 else { return .reply(HTTP.response(400)) }
+            guard length <= RunnerProtocol.maxBody else { return .reply(HTTP.response(413)) }
+            let have = buffer.count - bodyStart
+            guard have >= length else { return .needMore }
+            let start = buffer.startIndex + bodyStart
+            return .handle(Data(buffer[start..<(start + length)]))
+        }
+    }
+
+    private func reply(_ connection: NWConnection, _ data: Data) {
+        connection.send(content: data, completion: .contentProcessed { _ in connection.cancel() })
+    }
+}

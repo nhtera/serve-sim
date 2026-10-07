@@ -54,6 +54,18 @@ let package = Package(
             name: "oximux-device-capture",
             path: "oximux/Sources/oximux-device-capture"
         ),
+        // The iPhone control runner's protocol, HTTP and journal (symlinks
+        // into oximux/ios-runner, which builds them into its XCUITest
+        // bundle): pure Foundation/Network, tested here on macOS.
+        .target(
+            name: "OximuxRunnerCore",
+            path: "oximux/Sources/OximuxRunnerCore"
+        ),
+        .testTarget(
+            name: "RunnerProtocolTests",
+            dependencies: ["OximuxRunnerCore"],
+            path: "oximux/Tests/RunnerProtocolTests"
+        ),
         .testTarget(
             name: "DeviceCaptureTests",
             dependencies: ["oximux-device-capture"],

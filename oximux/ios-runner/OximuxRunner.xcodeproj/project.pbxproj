@@ -1,0 +1,446 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		16868C40D75BE2751FA7BBA7 /* MainThreadGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EBC33FF4D0819CBBB99BB89 /* MainThreadGate.swift */; };
+		38999C5933A7D284C7D2F927 /* Gestures.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBB9DCC61FDA9E049E29318E /* Gestures.swift */; };
+		6126B63FCEDD33FE2EE94B63 /* Snapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCC5D978E04237E05A7321D8 /* Snapshot.swift */; };
+		6BB7028EDA24776741C87775 /* RunnerSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A508919DCAB9DD383CAFBC61 /* RunnerSession.swift */; };
+		73171AA41A438D42A2F67CE4 /* Journal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A053CF8452D59642D0DAAB4B /* Journal.swift */; };
+		7CBC0EEFF21A6D529B06D86B /* HTTPServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3C3A5FBB6ACB8898B09D506 /* HTTPServer.swift */; };
+		9578E8FA51ADD762A43A2830 /* App.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD6BFA2F6B0FE6E68F52C619 /* App.swift */; };
+		A448C69FB96B6511BE1918BB /* Protocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B203CB06C639336293BE51CE /* Protocol.swift */; };
+		BB8E3B74AB24719262FFDC4F /* TextEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E8E600290745D5165C5EA66 /* TextEntry.swift */; };
+		C77BF2EE8BBDB10D642F4891 /* ExceptionGuard.m in Sources */ = {isa = PBXBuildFile; fileRef = 74CD637EA07E7A8E8C9592DB /* ExceptionGuard.m */; };
+		E1770C028F0874AFBE556F7D /* HTTPParsing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1FC0C6ACF74B64D25CB115D1 /* HTTPParsing.swift */; };
+		FBC66CFF9677B9E76088E17A /* Commands.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED13D04ED6DF54E3353C07CE /* Commands.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		5BEEFEF1619C17B03FC66208 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 03E977BA15B2F00D57ABBB94 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 0890C137234E5C92008AE782;
+			remoteInfo = OximuxRunner;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		1DAF6563D503B954505876D5 /* OximuxRunnerUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = OximuxRunnerUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1E8E600290745D5165C5EA66 /* TextEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextEntry.swift; sourceTree = "<group>"; };
+		1FC0C6ACF74B64D25CB115D1 /* HTTPParsing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPParsing.swift; sourceTree = "<group>"; };
+		5EBC33FF4D0819CBBB99BB89 /* MainThreadGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainThreadGate.swift; sourceTree = "<group>"; };
+		74CD637EA07E7A8E8C9592DB /* ExceptionGuard.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ExceptionGuard.m; sourceTree = "<group>"; };
+		A053CF8452D59642D0DAAB4B /* Journal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Journal.swift; sourceTree = "<group>"; };
+		A508919DCAB9DD383CAFBC61 /* RunnerSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunnerSession.swift; sourceTree = "<group>"; };
+		AD6BFA2F6B0FE6E68F52C619 /* App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = App.swift; sourceTree = "<group>"; };
+		B203CB06C639336293BE51CE /* Protocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Protocol.swift; sourceTree = "<group>"; };
+		BBB9DCC61FDA9E049E29318E /* Gestures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Gestures.swift; sourceTree = "<group>"; };
+		BCC5D978E04237E05A7321D8 /* Snapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Snapshot.swift; sourceTree = "<group>"; };
+		C3C3A5FBB6ACB8898B09D506 /* HTTPServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTTPServer.swift; sourceTree = "<group>"; };
+		CA07C1E1A310C24D1433DF9A /* OximuxRunner.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OximuxRunner.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ED13D04ED6DF54E3353C07CE /* Commands.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Commands.swift; sourceTree = "<group>"; };
+		F49174A0422AB1B4EC9201C9 /* BridgingHeader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BridgingHeader.h; sourceTree = "<group>"; };
+		FBAAB4F7A1EAAA246C0F67F8 /* ExceptionGuard.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ExceptionGuard.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		14DAC184C904252CE59F0889 /* OximuxRunner */ = {
+			isa = PBXGroup;
+			children = (
+				AD6BFA2F6B0FE6E68F52C619 /* App.swift */,
+			);
+			path = OximuxRunner;
+			sourceTree = "<group>";
+		};
+		B9EDD6AF7667FBA51D81FB07 = {
+			isa = PBXGroup;
+			children = (
+				14DAC184C904252CE59F0889 /* OximuxRunner */,
+				FBB49FACFC89D47B31A85700 /* OximuxRunnerUITests */,
+				C6193D071085E609108B2956 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		C6193D071085E609108B2956 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CA07C1E1A310C24D1433DF9A /* OximuxRunner.app */,
+				1DAF6563D503B954505876D5 /* OximuxRunnerUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		FBB49FACFC89D47B31A85700 /* OximuxRunnerUITests */ = {
+			isa = PBXGroup;
+			children = (
+				F49174A0422AB1B4EC9201C9 /* BridgingHeader.h */,
+				ED13D04ED6DF54E3353C07CE /* Commands.swift */,
+				FBAAB4F7A1EAAA246C0F67F8 /* ExceptionGuard.h */,
+				74CD637EA07E7A8E8C9592DB /* ExceptionGuard.m */,
+				BBB9DCC61FDA9E049E29318E /* Gestures.swift */,
+				1FC0C6ACF74B64D25CB115D1 /* HTTPParsing.swift */,
+				C3C3A5FBB6ACB8898B09D506 /* HTTPServer.swift */,
+				A053CF8452D59642D0DAAB4B /* Journal.swift */,
+				5EBC33FF4D0819CBBB99BB89 /* MainThreadGate.swift */,
+				B203CB06C639336293BE51CE /* Protocol.swift */,
+				A508919DCAB9DD383CAFBC61 /* RunnerSession.swift */,
+				BCC5D978E04237E05A7321D8 /* Snapshot.swift */,
+				1E8E600290745D5165C5EA66 /* TextEntry.swift */,
+			);
+			path = OximuxRunnerUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0890C137234E5C92008AE782 /* OximuxRunner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 40166F31AA7C9DAD6863B0DA /* Build configuration list for PBXNativeTarget "OximuxRunner" */;
+			buildPhases = (
+				F9859E1F67149D1E53495602 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OximuxRunner;
+			packageProductDependencies = (
+			);
+			productName = OximuxRunner;
+			productReference = CA07C1E1A310C24D1433DF9A /* OximuxRunner.app */;
+			productType = "com.apple.product-type.application";
+		};
+		2BCCDFDA75D0CF35BCCD7BBD /* OximuxRunnerUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3430583F71DB43C78C376EF0 /* Build configuration list for PBXNativeTarget "OximuxRunnerUITests" */;
+			buildPhases = (
+				B52F1532178F0BA09FF040D0 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0D1FCC48C276B4B33C4EABC2 /* PBXTargetDependency */,
+			);
+			name = OximuxRunnerUITests;
+			packageProductDependencies = (
+			);
+			productName = OximuxRunnerUITests;
+			productReference = 1DAF6563D503B954505876D5 /* OximuxRunnerUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		03E977BA15B2F00D57ABBB94 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					0890C137234E5C92008AE782 = {
+						ProvisioningStyle = Automatic;
+					};
+					2BCCDFDA75D0CF35BCCD7BBD = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 0890C137234E5C92008AE782;
+					};
+				};
+			};
+			buildConfigurationList = D8DCC1997B59F10079CD5403 /* Build configuration list for PBXProject "OximuxRunner" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = B9EDD6AF7667FBA51D81FB07;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = C6193D071085E609108B2956 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0890C137234E5C92008AE782 /* OximuxRunner */,
+				2BCCDFDA75D0CF35BCCD7BBD /* OximuxRunnerUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		B52F1532178F0BA09FF040D0 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FBC66CFF9677B9E76088E17A /* Commands.swift in Sources */,
+				C77BF2EE8BBDB10D642F4891 /* ExceptionGuard.m in Sources */,
+				38999C5933A7D284C7D2F927 /* Gestures.swift in Sources */,
+				E1770C028F0874AFBE556F7D /* HTTPParsing.swift in Sources */,
+				7CBC0EEFF21A6D529B06D86B /* HTTPServer.swift in Sources */,
+				73171AA41A438D42A2F67CE4 /* Journal.swift in Sources */,
+				16868C40D75BE2751FA7BBA7 /* MainThreadGate.swift in Sources */,
+				A448C69FB96B6511BE1918BB /* Protocol.swift in Sources */,
+				6BB7028EDA24776741C87775 /* RunnerSession.swift in Sources */,
+				6126B63FCEDD33FE2EE94B63 /* Snapshot.swift in Sources */,
+				BB8E3B74AB24719262FFDC4F /* TextEntry.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F9859E1F67149D1E53495602 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9578E8FA51ADD762A43A2830 /* App.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0D1FCC48C276B4B33C4EABC2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 0890C137234E5C92008AE782 /* OximuxRunner */;
+			targetProxy = 5BEEFEF1619C17B03FC66208 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		1A49684B86CF86AE782D7535 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OXIMUX_BUNDLE_PREFIX).uitests";
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = OximuxRunnerUITests/BridgingHeader.h;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = OximuxRunner;
+			};
+			name = Release;
+		};
+		6A795EB49CA073B9A421F068 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OXIMUX_BUNDLE_PREFIX = dev.oximux.runner;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		6E1E42ED19559A7351243D03 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_KEY_CFBundleDisplayName = "OxiMux Runner";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OXIMUX_BUNDLE_PREFIX)";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		8022AFE6A3D823BF36D5C935 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_KEY_CFBundleDisplayName = "OxiMux Runner";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OXIMUX_BUNDLE_PREFIX)";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A2D635AA68067AD64EE11C27 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "$(OXIMUX_BUNDLE_PREFIX).uitests";
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = OximuxRunnerUITests/BridgingHeader.h;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = OximuxRunner;
+			};
+			name = Debug;
+		};
+		F9C34D71D7185A7095847398 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OXIMUX_BUNDLE_PREFIX = dev.oximux.runner;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3430583F71DB43C78C376EF0 /* Build configuration list for PBXNativeTarget "OximuxRunnerUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A2D635AA68067AD64EE11C27 /* Debug */,
+				1A49684B86CF86AE782D7535 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		40166F31AA7C9DAD6863B0DA /* Build configuration list for PBXNativeTarget "OximuxRunner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8022AFE6A3D823BF36D5C935 /* Debug */,
+				6E1E42ED19559A7351243D03 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D8DCC1997B59F10079CD5403 /* Build configuration list for PBXProject "OximuxRunner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F9C34D71D7185A7095847398 /* Debug */,
+				6A795EB49CA073B9A421F068 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 03E977BA15B2F00D57ABBB94 /* Project object */;
+}

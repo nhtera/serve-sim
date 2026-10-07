@@ -1,0 +1,7 @@
+OxiMux iPhone runner (oximux/ios-runner)
+Copyright 2026 the OxiMux authors. Licensed under the Apache License, 2.0 (see LICENSE at the repository root).
+
+The approach — an XCUITest bundle that parks a token-authenticated command
+server on the device's loopback, reached over usbmux — follows the design of
+the Apache-2.0 "ios-device-runner" of the Argent project. This runner is a
+separate implementation: none of that project's code or binaries are included.

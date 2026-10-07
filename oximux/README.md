@@ -21,6 +21,7 @@ A second executable for a **USB iPhone's screen** (view-only), in the same proto
 - `oximux/Tests/HelperTests/`: golden framing and command-parser tests.
 - `oximux/Sources/oximux-device-capture/`: the capture helper (`main`, `Options`, `DeviceStream`, `Still`, `Recorder`, `DeviceCommands`, `Shutdown`); `oximux/device-capture/Info.plist` and `oximux/entitlements/device-capture.entitlements` make its app bundle.
 - `oximux/Tests/DeviceCaptureTests/`: arguments, record paths, still-screen gating, recording from synthetic frames.
+- `oximux/ios-runner/`: the iPhone **control runner**, an XCUITest bundle serving commands on the phone's loopback (protocol `oximux-runner/1`, see its `PROTOCOL.md`). Released as **sources** (`oximux-ios-runner-src-<v>.tar.gz`, reproducible: `oximux/scripts/pack-runner.sh`) by the `oximux-ios-runner` workflow on a `ios-runner-v<v>` tag; OxiMux builds and signs it on the user's Mac. Its pure protocol files build into `OximuxRunnerCore`, tested by `oximux/Tests/RunnerProtocolTests/`.
 - `oximux/PATCHES.md`: the only changes to upstream files.
 
 ## Build and test (Swift ≥ 6.1, Xcode 26 recommended)

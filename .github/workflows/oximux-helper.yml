@@ -58,7 +58,7 @@ jobs:
           # an unlisted change is an undocumented patch, and a listed file that
           # no longer differs is a stale row (e.g. upstream merged the fix).
           changed=$(git diff --name-only "$base" HEAD \
-            | grep -v -E '^(Package\.swift|oximux/|\.github/workflows/oximux-helper\.yml)' \
+            | grep -v -E '^(Package\.swift|oximux/|\.github/workflows/oximux-(helper|ios-runner)\.yml)' \
             | sort -u || true)
           listed=$(grep -E '^\| [0-9]+ \|' oximux/PATCHES.md | grep -o 'packages/[^`]*' | sort -u)
           if [[ "$changed" != "$listed" ]]; then
