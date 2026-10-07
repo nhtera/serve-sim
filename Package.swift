@@ -26,6 +26,7 @@ let package = Package(
     platforms: [.macOS(.v14)],
     products: [
         .executable(name: "oximux-sim-helper", targets: ["oximux-sim-helper"]),
+        .executable(name: "oximux-device-capture", targets: ["oximux-device-capture"]),
     ],
     targets: [
         .target(
@@ -43,6 +44,20 @@ let package = Package(
                 "Upstream/sim-module.swift",
                 "Upstream/build.sh",
             ]
+        ),
+        // A USB iPhone's screen, view-only, in the same protocol. Shares the
+        // sim helper's wire, parser, version and H.264 output, and upstream's
+        // encoder, through committed symlinks (the sim helper's sources are
+        // untouched). Shipped in its own app bundle with only the camera
+        // entitlement: see oximux/device-capture/.
+        .executableTarget(
+            name: "oximux-device-capture",
+            path: "oximux/Sources/oximux-device-capture"
+        ),
+        .testTarget(
+            name: "DeviceCaptureTests",
+            dependencies: ["oximux-device-capture"],
+            path: "oximux/Tests/DeviceCaptureTests"
         ),
         .testTarget(
             name: "HelperTests",

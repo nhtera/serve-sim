@@ -1,8 +1,9 @@
 # OxiMux fork addition, not part of upstream serve-sim.
 #
 # Builds, tests and (on a `helper-v*` tag) releases oximux-sim-helper, the
-# stdio-only simulator helper bundled by the OxiMux desktop app. See
-# oximux/README.md. OxiMux pins each release by version + sha256, so a
+# stdio-only simulator helper bundled by the OxiMux desktop app, and
+# oximux-device-capture, its USB-iPhone sibling (an app-bundle skeleton that
+# OxiMux signs with the camera entitlement alone). See oximux/README.md. OxiMux pins each release by version + sha256, so a
 # published asset must never be replaced; cut a new version instead.
 name: oximux-helper
 
@@ -106,10 +107,44 @@ jobs:
           print(f"conformance ok: {len(msgs)} messages")
           PY
 
+      - name: Smoke checks (device capture)
+        run: |
+          bin=.build/arm64-apple-macosx/release/oximux-device-capture
+          "$bin" --version
+          if otool -L "$bin" | grep -q '@rpath/libswift'; then
+            echo "::error::capture helper links an @rpath Swift runtime"; otool -L "$bin"; exit 1
+          fi
+          # Unsigned here: OxiMux signs it with exactly the camera entitlement.
+          ents=$(codesign -d --entitlements - "$bin" 2>/dev/null || true)
+          if [[ -n "$ents" ]]; then
+            echo "::error::capture helper carries entitlements before OxiMux signs it"; echo "$ents"; exit 1
+          fi
+          [[ "$(lipo -archs "$bin")" == "arm64" ]]
+          # The entitlement file it will be signed with names the camera, nothing else.
+          keys=$(plutil -convert json -o - oximux/entitlements/device-capture.entitlements)
+          [[ "$keys" == '{"com.apple.security.device.camera":true}' ]] || { echo "::error::unexpected entitlements: $keys"; exit 1; }
+          plutil -lint oximux/device-capture/Info.plist
+          # Bad arguments: a protocol-2 hello, then a bad_args fatal, exit 3
+          # (no phone, no camera prompt).
+          python3 - "$bin" <<'PY'
+          import json, struct, subprocess, sys
+          p = subprocess.run([sys.argv[1]], stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+          out, msgs, i = p.stdout, [], 0
+          while i < len(out):
+              n = struct.unpack("<I", out[i + 1:i + 5])[0]
+              msgs.append(json.loads(out[i + 5:i + 5 + n])); i += 5 + n
+          assert msgs[0]["event"] == "hello" and msgs[0]["proto"] == 2, msgs
+          assert msgs[-1]["event"] == "fatal" and msgs[-1]["reason"] == "bad_args", msgs
+          assert p.returncode == 3, p.returncode
+          print("capture bad_args ok")
+          PY
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: oximux-sim-helper-arm64
-          path: .build/arm64-apple-macosx/release/oximux-sim-helper
+          path: |
+            .build/arm64-apple-macosx/release/oximux-sim-helper
+            .build/arm64-apple-macosx/release/oximux-device-capture
           if-no-files-found: error
           retention-days: 7
 
@@ -158,22 +193,41 @@ jobs:
           shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
           cat "$name.tar.gz.sha256"
           echo "name=$name" >> "$GITHUB_OUTPUT"
+          # The capture app, unsigned: OxiMux signs it (hardened runtime, the
+          # camera entitlement alone) when it bundles it.
+          cap="oximux-device-capture-${version}-macos-arm64"
+          app="$cap/OxiMux Device Capture.app/Contents"
+          mkdir -p "$app/MacOS"
+          install -m 0755 dist-bin/oximux-device-capture "$app/MacOS/oximux-device-capture"
+          [[ "$("$app/MacOS/oximux-device-capture" --version)" == "oximux-device-capture $version" ]]
+          cp oximux/device-capture/Info.plist "$app/Info.plist"
+          [[ "$(plutil -extract CFBundleShortVersionString raw "$app/Info.plist")" == "$version" ]] \
+            || { echo "::error::device-capture Info.plist version disagrees with $version"; exit 1; }
+          cp oximux/entitlements/device-capture.entitlements LICENSE oximux/PATCHES.md oximux/README.md "$cap/"
+          tar -czf "$cap.tar.gz" "$cap"
+          shasum -a 256 "$cap.tar.gz" > "$cap.tar.gz.sha256"
+          cat "$cap.tar.gz.sha256"
+          echo "capture=$cap" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
-          subject-path: ${{ steps.pkg.outputs.name }}.tar.gz
+          subject-path: |
+            ${{ steps.pkg.outputs.name }}.tar.gz
+            ${{ steps.pkg.outputs.capture }}.tar.gz
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           NAME: ${{ steps.pkg.outputs.name }}
+          CAPTURE: ${{ steps.pkg.outputs.capture }}
           VERSION: ${{ steps.pkg.outputs.version }}
         run: |
           # 0.x releases are pre-releases until the protocol settles.
           pre=()
           [[ "$VERSION" == 0.* ]] && pre=(--prerelease)
           gh release create "$GITHUB_REF_NAME" "$NAME.tar.gz" "$NAME.tar.gz.sha256" \
+            "$CAPTURE.tar.gz" "$CAPTURE.tar.gz.sha256" \
             "${pre[@]}" --verify-tag \
-            --title "oximux-sim-helper $VERSION" \
+            --title "oximux-sim-helper and oximux-device-capture $VERSION" \
             --notes "Built from \`$(git rev-parse --short HEAD)\` on upstream base \`$(cut -c1-12 oximux/upstream-base)\`. arm64, hardened-runtime-ready, no entitlements, stdio only. See oximux/README.md and oximux/PATCHES.md."

@@ -1,0 +1,1 @@
+../../../packages/serve-sim/Sources/SimNative/H264Encoder.swift

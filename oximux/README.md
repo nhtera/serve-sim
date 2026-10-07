@@ -10,6 +10,9 @@ The full wire spec is **[`PROTOCOL.md`](PROTOCOL.md)**: protocol version 2, anno
 - **Conformance:** `--conformance` needs no simulator. It lets OxiMux test its protocol code against the shipped binary.
 - **Signing:** hardened runtime, no entitlements. OxiMux re-signs the binary inside its own notarized app bundle.
 
+## Device capture (`oximux-device-capture`)
+A second executable for a **USB iPhone's screen** (view-only), in the same protocol: see `PROTOCOL.md`, "Device capture helper". It shares `Wire.swift`, `Protocol.swift`, `Version.swift` and `H264Output.swift` with the sim helper, and upstream's `H264Encoder.swift` and `StreamFormat.swift`, through committed symlinks in `oximux/Sources/oximux-device-capture/`; the sim helper's sources are untouched. Released as an unsigned app-bundle skeleton (`OxiMux Device Capture.app` with `oximux/device-capture/Info.plist`) plus `oximux/entitlements/device-capture.entitlements`: OxiMux signs it with that camera entitlement alone.
+
 ## Layout
 - `/Package.swift`: root manifest. It is an added file; upstream has no root manifest. It builds one module from `oximux/Sources/oximux-sim-helper`.
   - `Upstream` in that folder is a **committed symlink** to `packages/serve-sim/Sources/SimNative`.

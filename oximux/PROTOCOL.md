@@ -95,3 +95,32 @@ Every command is `{"cmd": "<name>", "id"?: int, …}`. A command that returns da
 13. `conformance_ready`
 
 After that it echoes each command as `parsed`, with the canonical form the helper understood (clamped values, absent optionals omitted). OxiMux's tests drive the **shipped** binary this way.
+
+## Device capture helper (`oximux-device-capture`)
+The same protocol version (2), framing and parser, for a **USB iPhone's screen, view-only**. macOS presents a connected iPhone's screen as a screen-capture device (CoreMediaIO + AVFoundation); the helper captures it and streams it like the sim helper. It ships in its own app bundle, `OxiMux Device Capture.app` (`dev.oximux.device-capture`), the only OxiMux binary with the camera entitlement; OxiMux spawns it with responsibility disclaimed, so the camera grant is this bundle's and never reaches OxiMux's other children.
+
+```
+oximux-device-capture --device <UDID> [--scale 0.05-1] [--fps 1-60] [--quality 0.1-1] [--format jpeg|avcc]
+oximux-device-capture --version    # "oximux-device-capture <version>"
+```
+- `--device` is the phone's UDID: devicectl's `hardwareProperties.udid`, which is also AVFoundation's `uniqueID` (not devicectl's top-level `identifier`). Hex digits and dashes only.
+- Defaults, clamping and exit codes as for the sim helper. `hello.xcode` is empty.
+
+**Startup.** `hello`, then camera access, then the phone (≤ 8 s), then `ready{udid, pid, orientation: 1}`, then `size` and frames. Its `fatal` reasons, beyond `bad_args` and `capture_failed`:
+
+| reason | meaning |
+|---|---|
+| `device_not_connected` | no USB iPhone with that UDID (unplugged, untrusted, or not yet unlocked since boot); also sent mid-stream when the phone is unplugged |
+| `camera_denied` | macOS denied the camera to this bundle (System Settings › Privacy & Security › Camera) |
+| `device_busy` | another app holds the phone's screen (QuickTime's movie recording, say) |
+
+**Frames rotate with the phone.** Unlike a simulator's framebuffer, the phone's frames already show the screen as held. So `size` is the **displayed** size (landscape when the phone is), nothing is rotated, and `orientation` is sent when the aspect flips: `1` portrait, `3` landscape (the helper cannot tell which way). The phone sends about 60 frames a second whatever the screen does: the helper paces to `fps` and sends nothing for an unchanged screen (in `avcc`, one sharp refresh as the sim helper does).
+
+**Commands.** `ping`, `configure` (`scale`, `fps`, `format`; an `orientation` is refused `unsupported`), `pause` / `resume`, `screenshot` (PNG of the latest frame, full resolution). Every input and accessibility command (`touch`, `multitouch`, `scroll`, `key`, `button`, `ax_describe`, `ax_frontmost`, `memory_warning`) answers `{"ok": false, "error": "unsupported"}`. Two more, this helper only:
+
+| cmd | fields | reply |
+|---|---|---|
+| `record_start` | `path`: absolute, ending `.mov`, in an existing folder, no `.`/`..` components | `{"ok": true}`; recording continues while paused |
+| `record_stop` | none | `{"ok": true, "path": "…", "duration_ms": n}`, or a failure (nothing recorded, say, because the screen was off) |
+
+A recording is H.264 in a QuickTime movie, re-encoded from the captured frames (about +7 points of CPU), one size per movie. stdin EOF or an unplug finalizes it before the helper exits.

@@ -1,0 +1,1 @@
+../../../packages/serve-sim/Sources/SimNative/StreamFormat.swift
