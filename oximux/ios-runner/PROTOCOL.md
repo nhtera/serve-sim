@@ -55,7 +55,7 @@ Whole-number fields (`taps`, `count`) outside their range, or not whole, are `BA
 - **One at a time.** XCTest is driven from one thread: a command arriving while another runs is `RUNNER_BUSY`; one that overruns its deadline (30 s, plus its own length: a drag's time, ~50 ms a typed character) is `RUNNER_WEDGED` — the runner stays busy until it does end, and its real reply is then what `status` and a resend of its id get.
 
 ## Error codes
-`BAD_REQUEST`, `UNKNOWN_COMMAND`, `APP_BACKGROUNDED`, `IN_PROGRESS`, `RUNNER_BUSY`, `RUNNER_WEDGED`, `UNSUPPORTED`, `XCTEST_FAILED` (XCTest's complaint, first line only — e.g. no keyboard focus, with the hint to tap the field first). A failure XCTest records during a command is that command's error: it never ends the run.
+`BAD_REQUEST`, `UNKNOWN_COMMAND`, `APP_BACKGROUNDED`, `NO_KEYBOARD_FOCUS` (`type`, `keyboardReturn`, `keyboardDelete` with no text field focused in the addressed app or the home screen's; nothing was typed), `IN_PROGRESS`, `RUNNER_BUSY`, `RUNNER_WEDGED`, `UNSUPPORTED`, `XCTEST_FAILED` (XCTest's complaint, first line only — e.g. no keyboard focus, with the hint to tap the field first). A failure XCTest records during a command is that command's error: it never ends the run.
 
 ## Source layout
 - `project.yml` — the xcodegen spec; `OximuxRunner.xcodeproj` is generated from it and committed (`xcodegen generate`).

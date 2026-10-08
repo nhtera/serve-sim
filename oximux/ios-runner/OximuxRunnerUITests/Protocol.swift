@@ -5,7 +5,7 @@ import Foundation
 /// the fork's macOS tests check it without a phone.
 enum RunnerProtocol {
     static let name = "oximux-runner/1"
-    static let version = "0.1.0"
+    static let version = "0.1.1"
     /// The largest request body accepted (413 beyond).
     static let maxBody = 2 << 20
     /// Most connections served at once (503 beyond).
@@ -27,6 +27,7 @@ struct RunnerError: Error, Equatable {
     static let busy = Self(code: "RUNNER_BUSY", message: "another command is still running", hint: "retry when it has finished")
     static let inProgress = Self(code: "IN_PROGRESS", message: "this command is still running", hint: "ask `status` with its commandId")
     static let wedged = Self(code: "RUNNER_WEDGED", message: "a command did not finish in time", hint: "restart the runner")
+    static let noKeyboardFocus = Self(code: "NO_KEYBOARD_FOCUS", message: "nothing on the screen has the keyboard focus", hint: "tap the text field first")
 
     static func backgrounded(_ app: String) -> Self {
         Self(code: "APP_BACKGROUNDED", message: "\(app) is not in front", hint: "a gesture brings it back; reading does not")
