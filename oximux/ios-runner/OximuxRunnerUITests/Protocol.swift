@@ -5,7 +5,7 @@ import Foundation
 /// the fork's macOS tests check it without a phone.
 enum RunnerProtocol {
     static let name = "oximux-runner/1"
-    static let version = "0.1.1"
+    static let version = "0.1.2"
     /// The largest request body accepted (413 beyond).
     static let maxBody = 2 << 20
     /// Most connections served at once (503 beyond).
@@ -27,7 +27,7 @@ struct RunnerError: Error, Equatable {
     static let busy = Self(code: "RUNNER_BUSY", message: "another command is still running", hint: "retry when it has finished")
     static let inProgress = Self(code: "IN_PROGRESS", message: "this command is still running", hint: "ask `status` with its commandId")
     static let wedged = Self(code: "RUNNER_WEDGED", message: "a command did not finish in time", hint: "restart the runner")
-    static let noKeyboardFocus = Self(code: "NO_KEYBOARD_FOCUS", message: "nothing on the screen has the keyboard focus", hint: "tap the text field first")
+    static let noKeyboardFocus = Self(code: "NO_KEYBOARD_FOCUS", message: "no app the runner can reach has the keyboard focus", hint: "tap the text field first, or address its app")
 
     static func backgrounded(_ app: String) -> Self {
         Self(code: "APP_BACKGROUNDED", message: "\(app) is not in front", hint: "a gesture brings it back; reading does not")
@@ -87,6 +87,19 @@ struct RunnerCommand {
             throw RunnerError.badRequest("`\(key)` is a whole number from \(range.lowerBound) to \(range.upperBound)")
         }
         return Int(value)
+    }
+
+    /// Bundle identifiers under `key`: none when absent; anything else than
+    /// at most `max` well-formed ids (letters, digits, `.`, `-`) is a bad
+    /// request.
+    func bundleIDs(_ key: String, max: Int) throws -> [String] {
+        guard let raw = fields[key] else { return [] }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-"))
+        guard let ids = raw as? [String], ids.count <= max,
+              ids.allSatisfy({ !$0.isEmpty && $0.count <= 255 && $0.unicodeScalars.allSatisfy(allowed.contains) }) else {
+            throw RunnerError.badRequest("`\(key)` is up to \(max) bundle identifiers")
+        }
+        return ids
     }
 
     func point(_ key: String) -> (x: Double, y: Double)? {

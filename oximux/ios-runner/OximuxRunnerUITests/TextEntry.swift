@@ -43,8 +43,12 @@ enum TextEntry {
         "com.apple.news", "com.apple.VoiceMemos", "com.apple.Fitness", "com.apple.Home",
     ]
 
+    /// At most this many `candidates`: the caller's guesses at which app is
+    /// in front (OxiMux sends the phone's own apps).
+    static let maxCandidates = 64
+
     /// The app that has the keyboard focus: the one addressed, else the one
-    /// of the home screen's or Apple's in front. Asked before typing because
+    /// in front among the caller's `candidates`, the home screen's or Apple's. Asked before typing because
     /// `typeText` with nothing focused fails inside XCTest, and its handling
     /// of that failure (idle waits, two retries, diagnostics) makes the phone
     /// drop off USB for seconds — measured: three or four re-enumerations,
@@ -52,10 +56,11 @@ enum TextEntry {
     /// app in front is searched: querying a suspended one blocks for 30 s.
     static func focused(_ command: RunnerCommand, _ app: XCUIApplication) throws -> XCUIApplication {
         let addressed = command.string("app") ?? Commands.springboard
+        let candidates = try command.bundleIDs("candidates", max: maxCandidates)
         if hasFocus(app) {
             return app
         }
-        for bundle in homeScreenOwners + appleApps where bundle != addressed {
+        for bundle in candidates + homeScreenOwners + appleApps where bundle != addressed {
             let other = XCUIApplication(bundleIdentifier: bundle)
             if other.state == .runningForeground && hasFocus(other) {
                 return other

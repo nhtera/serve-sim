@@ -42,9 +42,9 @@ A JSON object: `command`, an optional `commandId` (1–128 characters), and the 
 | `tap` | `app`?, `x`, `y`, `taps`? (1 or 2: a double tap) | — |
 | `longPress` | `app`?, `x`, `y`, `durationMs`? (default 800) | — |
 | `drag` | `app`?, `from` `{x, y}`, `to` `{x, y}`, `durationMs`?, `holdMs`?, `settle`? (ms) | — (one gesture; speed clamped to 60–5000 pt/s) |
-| `type` | `app`?, `text` (1–4000 characters) | — (into whatever has the keyboard focus) |
-| `keyboardReturn` | `app`? | — |
-| `keyboardDelete` | `app`?, `count`? (1–500) | — |
+| `type` | `app`?, `text` (1–4000 characters), `candidates`? | — (into whatever has the keyboard focus) |
+| `keyboardReturn` | `app`?, `candidates`? | — |
+| `keyboardDelete` | `app`?, `count`? (1–500), `candidates`? | — |
 | `button` | `name`: `home`, `volumeUp`, `volumeDown`, `action` | — (`UNSUPPORTED` for volume on a simulator; an iPhone without an Action button answers `XCTEST_FAILED`) |
 | `shutdown` | — | — (answered, then the run ends half a second later) |
 
@@ -55,7 +55,7 @@ Whole-number fields (`taps`, `count`) outside their range, or not whole, are `BA
 - **One at a time.** XCTest is driven from one thread: a command arriving while another runs is `RUNNER_BUSY`; one that overruns its deadline (30 s, plus its own length: a drag's time, ~50 ms a typed character) is `RUNNER_WEDGED` — the runner stays busy until it does end, and its real reply is then what `status` and a resend of its id get.
 
 ## Error codes
-`BAD_REQUEST`, `UNKNOWN_COMMAND`, `APP_BACKGROUNDED`, `NO_KEYBOARD_FOCUS` (`type`, `keyboardReturn`, `keyboardDelete` with no text field focused in the addressed app or the home screen's; nothing was typed), `IN_PROGRESS`, `RUNNER_BUSY`, `RUNNER_WEDGED`, `UNSUPPORTED`, `XCTEST_FAILED` (XCTest's complaint, first line only — e.g. no keyboard focus, with the hint to tap the field first). A failure XCTest records during a command is that command's error: it never ends the run.
+`BAD_REQUEST`, `UNKNOWN_COMMAND`, `APP_BACKGROUNDED`, `NO_KEYBOARD_FOCUS` (`type`, `keyboardReturn`, `keyboardDelete`: no text field focused in the addressed app, nor in the app in front among `candidates` — up to 64 bundle ids, the caller's guesses — the home screen's (springboard, Spotlight) or Apple's own; nothing was typed), `IN_PROGRESS`, `RUNNER_BUSY`, `RUNNER_WEDGED`, `UNSUPPORTED`, `XCTEST_FAILED` (XCTest's complaint, first line only). A failure XCTest records during a command is that command's error: it never ends the run.
 
 ## Source layout
 - `project.yml` — the xcodegen spec; `OximuxRunner.xcodeproj` is generated from it and committed (`xcodegen generate`).

@@ -126,6 +126,17 @@ final class RunnerProtocolTests: XCTestCase {
     }
 
     /// A whole number in range, or a bad request — never a trap.
+    func testBundleIDsAreChecked() throws {
+        let decode = { (json: String) in try RunnerCommand.decode(Data(json.utf8)).get() }
+        XCTAssertEqual(try decode(#"{"command":"type"}"#).bundleIDs("candidates", max: 2), [])
+        XCTAssertEqual(try decode(#"{"command":"type","candidates":["com.example.a","dev.x-y.b"]}"#).bundleIDs("candidates", max: 2), ["com.example.a", "dev.x-y.b"])
+        for bad in [#""com.example""#, #"[1]"#, #"[""]"#, #"["a b"]"#, #"["a","b","c"]"#] {
+            XCTAssertThrowsError(try decode(#"{"command":"type","candidates":"# + bad + "}").bundleIDs("candidates", max: 2), bad) { error in
+                XCTAssertEqual((error as? RunnerError)?.code, "BAD_REQUEST", bad)
+            }
+        }
+    }
+
     func testIntegersAreCheckedNotConverted() throws {
         let command = try RunnerCommand.decode(Data(#"{"command":"tap","taps":1e300,"half":1.5,"ok":2}"#.utf8)).get()
         XCTAssertEqual(try command.integer("ok", in: 1...2, fallback: 1), 2)
