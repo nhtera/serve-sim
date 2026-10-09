@@ -71,15 +71,31 @@ final class RunnerProtocolTests: XCTestCase {
         XCTAssertFalse(HTTP.constantTimeEqual(t + [0x41], t), "longer")
         XCTAssertFalse(HTTP.constantTimeEqual([], []), "no token never matches")
         let head = { (auth: String?) in HTTP.Head(method: "POST", target: "/", headers: auth.map { ["authorization": $0] } ?? [:]) }
-        XCTAssertTrue(HTTP.authorized(head("Bearer secret-token"), token: "secret-token"))
-        XCTAssertFalse(HTTP.authorized(head("Basic secret-token"), token: "secret-token"))
-        XCTAssertFalse(HTTP.authorized(head(nil), token: "secret-token"))
+        let digest = HTTP.digest(of: "secret-token")
+        XCTAssertTrue(HTTP.authorized(head("Bearer secret-token"), digest: digest))
+        XCTAssertFalse(HTTP.authorized(head("Bearer secret-toke"), digest: digest))
+        XCTAssertFalse(HTTP.authorized(head("Basic secret-token"), digest: digest))
+        XCTAssertFalse(HTTP.authorized(head(nil), digest: digest))
+        // The digest itself is no password.
+        let hex = digest.map { String(format: "%02x", $0) }.joined()
+        XCTAssertFalse(HTTP.authorized(head("Bearer \(hex)"), digest: digest))
+    }
+
+    /// The environment carries the digest as hex; anything else is refused.
+    func testTheDigestIsReadAsHex() {
+        let hex = "2bb80d537b1da3e38bd30361aa855686bde0eacd7162fef6a25fe97bf527a25b" // SHA-256("secret")
+        XCTAssertEqual(HTTP.digest(hex: hex), HTTP.digest(of: "secret"))
+        XCTAssertEqual(HTTP.digest(hex: hex.uppercased()), HTTP.digest(of: "secret"))
+        XCTAssertNil(HTTP.digest(hex: String(hex.dropLast())))
+        XCTAssertNil(HTTP.digest(hex: String(hex.dropLast()) + "g"))
+        XCTAssertNil(HTTP.digest(hex: ""))
+        XCTAssertNil(HTTP.digest(hex: "+" + String(hex.dropFirst())))
     }
 
     /// Authorization comes before anything else is looked at: a stranger
     /// learns nothing, not even whether the body was too big.
     func testRequestsAreAnsweredInOrderOfConcern() {
-        let server = HTTPServer(token: token) { _ in Data() }
+        let server = HTTPServer(digest: HTTP.digest(of: token)) { _ in Data() }
         func request(_ method: String = "POST", target: String = "/", auth: Bool = true, length: Int, body: String = "") -> Data {
             var head = "\(method) \(target) HTTP/1.1\r\nContent-Length: \(length)\r\n"
             if auth { head += "Authorization: Bearer \(token)\r\n" }
@@ -161,7 +177,7 @@ final class RunnerProtocolTests: XCTestCase {
     /// handled, one without is refused, and a fifth connection at once is
     /// turned away.
     func testTheServerServesOnLoopback() throws {
-        let server = HTTPServer(token: token) { body in Envelope.ok(["echo": String(data: body, encoding: .utf8) ?? ""]) }
+        let server = HTTPServer(digest: HTTP.digest(of: token)) { body in Envelope.ok(["echo": String(data: body, encoding: .utf8) ?? ""]) }
         let ready = expectation(description: "listening")
         let port = Port()
         try server.start(ready: { p in port.value = p; ready.fulfill() }, failed: { XCTFail("\($0)") })

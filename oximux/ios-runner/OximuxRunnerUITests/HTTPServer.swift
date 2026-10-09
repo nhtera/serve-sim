@@ -4,7 +4,7 @@ import Network
 /// The runner's command server: HTTP/1.1 on the phone's **loopback only**
 /// (usbmux reaches it from the Mac; nothing on the network can), on a port
 /// the system picks. One request per connection; every request must carry
-/// the bearer token (401 with no body otherwise); a body over
+/// the bearer token whose SHA-256 it was given (401 with no body otherwise); a body over
 /// `RunnerProtocol.maxBody` gets 413, a connection over
 /// `RunnerProtocol.maxConnections` gets 503.
 final class HTTPServer: @unchecked Sendable {
@@ -12,7 +12,7 @@ final class HTTPServer: @unchecked Sendable {
     /// on a worker queue, never the listener's; it may block.
     typealias Handler = @Sendable (Data) -> Data
 
-    private let token: String
+    private let digest: [UInt8]
     private let handler: Handler
     private let queue = DispatchQueue(label: "oximux.runner.http")
     private let workers = DispatchQueue(label: "oximux.runner.work", attributes: .concurrent)
@@ -33,8 +33,9 @@ final class HTTPServer: @unchecked Sendable {
         var headSeen = false
     }
 
-    init(token: String, handler: @escaping Handler) {
-        self.token = token
+    /// `digest`: the token's SHA-256 (see `HTTP.authorized`).
+    init(digest: [UInt8], handler: @escaping Handler) {
+        self.digest = digest
         self.handler = handler
     }
 
@@ -119,7 +120,7 @@ final class HTTPServer: @unchecked Sendable {
         case let .head(head, bodyStart):
             // Auth before anything else is looked at: a stranger learns
             // nothing, not even whether the body was too big.
-            guard HTTP.authorized(head, token: token) else { return .reply(HTTP.response(401)) }
+            guard HTTP.authorized(head, digest: digest) else { return .reply(HTTP.response(401)) }
             guard head.method == "POST" else { return .reply(HTTP.response(405)) }
             guard head.target == "/" else { return .reply(HTTP.response(404)) }
             guard let length = head.contentLength, length >= 0 else { return .reply(HTTP.response(400)) }

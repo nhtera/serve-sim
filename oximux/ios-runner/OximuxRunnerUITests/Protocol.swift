@@ -5,7 +5,7 @@ import Foundation
 /// the fork's macOS tests check it without a phone.
 enum RunnerProtocol {
     static let name = "oximux-runner/1"
-    static let version = "0.1.2"
+    static let version = "0.1.3"
     /// The largest request body accepted (413 beyond).
     static let maxBody = 2 << 20
     /// Most connections served at once (503 beyond).

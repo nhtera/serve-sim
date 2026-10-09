@@ -8,11 +8,11 @@ The project carries no team and no real bundle ids. OxiMux builds it on the user
 xcodebuild build-for-testing -project OximuxRunner.xcodeproj -scheme OximuxRunner \
   -destination id=<phone udid> -derivedDataPath <dir> \
   DEVELOPMENT_TEAM=<team> OXIMUX_BUNDLE_PREFIX=dev.oximux.runner.t<team> -allowProvisioningUpdates
-TEST_RUNNER_OXIMUX_TOKEN=<token> xcodebuild test-without-building -project OximuxRunner.xcodeproj \
+TEST_RUNNER_OXIMUX_TOKEN_SHA256=<sha256 of token, hex> xcodebuild test-without-building -project OximuxRunner.xcodeproj \
   -scheme OximuxRunner -destination id=<phone udid> -derivedDataPath <dir>
 ```
 - `OXIMUX_BUNDLE_PREFIX` names the host app; the test bundle is `<prefix>.uitests`.
-- The token is fresh per launch, at least 32 characters. xcodebuild hands `TEST_RUNNER_OXIMUX_TOKEN` to the runner as `OXIMUX_TOKEN`. The runner never logs it.
+- The token is fresh per launch (OxiMux uses 32 random bytes as 64 hex digits). Only its **SHA-256** goes to the runner, as 64 hex digits: xcodebuild hands `TEST_RUNNER_OXIMUX_TOKEN_SHA256` to it as `OXIMUX_TOKEN_SHA256`. XCTest writes the test's environment into the result bundle's session log on the Mac, readable by any process of the user's, so the token itself must never be in it. (Runner 0.1.2 and earlier took the token itself, `TEST_RUNNER_OXIMUX_TOKEN`.)
 - When it is listening, the runner prints `OXIMUX_RUNNER_LISTENING port=<n>` (to stdout, and again through the system log, which prefixes it: match it as a substring, first one wins). A listener failure prints `OXIMUX_RUNNER_FAILED …` and ends the run.
 - XCTest records no video of the run and keeps none of what it captures (the scheme's `preferredScreenCaptureFormat: screenshots`, `systemAttachmentLifetime: keepNever`): the runner is up for hours on someone's own phone.
 - It parks for at most 24 hours, then ends. `shutdown` ends it sooner.
@@ -20,7 +20,7 @@ TEST_RUNNER_OXIMUX_TOKEN=<token> xcodebuild test-without-building -project Oximu
 
 ## Transport
 - One HTTP/1.1 `POST /` per command, `Content-Length` framed, answered with `Connection: close`.
-- Every request carries `Authorization: Bearer <token>`, compared in constant time. Without it, or with another: **401, no body** — checked before anything else about the request.
+- Every request carries `Authorization: Bearer <token>`; its SHA-256 is compared with the one the runner was given, in constant time. Without it, or with another: **401, no body** — checked before anything else about the request.
 - Other refusals, all without a body: 405 (not `POST`), 404 (not `/`), 400 (an unreadable head, no `Content-Length`, a `Transfer-Encoding`, or a second `Content-Length` or `Authorization`), 413 (a body over 2 MB), 503 (a fifth connection while four are open).
 - A connection must send its whole request head within 5 s, and be answered within 120 s; it is closed otherwise.
 - Replies are not size-capped: a `screenshot` is several MB.

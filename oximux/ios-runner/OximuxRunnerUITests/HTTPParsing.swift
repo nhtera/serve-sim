@@ -1,8 +1,9 @@
+import CryptoKit
 import Foundation
 
 /// The little HTTP/1.1 the runner speaks: a request head (method, target,
-/// headers), a `Content-Length` body, a bearer token compared in constant
-/// time, and a `Connection: close` reply. Pure Foundation.
+/// headers), a `Content-Length` body, a bearer token checked against its
+/// SHA-256 in constant time, and a `Connection: close` reply.
 enum HTTP {
     /// The longest request head accepted.
     static let maxHead = 16 << 10
@@ -53,11 +54,38 @@ enum HTTP {
         buffer.range(of: Data("\r\n\r\n".utf8)) != nil || buffer.count > maxHead
     }
 
-    /// Whether `head` carries `Authorization: Bearer <token>`, compared in
-    /// time that does not depend on where the two first differ.
-    static func authorized(_ head: Head, token: String) -> Bool {
+    /// Whether `head` carries `Authorization: Bearer <token>` for the token
+    /// whose SHA-256 is `digest`, compared in time that does not depend on
+    /// where the two first differ. The runner holds only the digest: XCTest
+    /// writes the test's environment into the result bundle on the Mac.
+    static func authorized(_ head: Head, digest: [UInt8]) -> Bool {
         guard let value = head.headers["authorization"], value.hasPrefix("Bearer ") else { return false }
-        return constantTimeEqual(Array(value.dropFirst("Bearer ".count).utf8), Array(token.utf8))
+        return constantTimeEqual(Self.digest(of: String(value.dropFirst("Bearer ".count))), digest)
+    }
+
+    /// A token's SHA-256.
+    static func digest(of token: String) -> [UInt8] {
+        Array(SHA256.hash(data: Data(token.utf8)))
+    }
+
+    /// A SHA-256 written as 64 hex digits (either case); `nil` otherwise.
+    static func digest(hex: String) -> [UInt8]? {
+        // Digits only: `UInt8(_:radix:)` would also take a sign.
+        let nibbles = hex.utf8.map { c -> UInt8? in
+            switch c {
+            case UInt8(ascii: "0")...UInt8(ascii: "9"): c - UInt8(ascii: "0")
+            case UInt8(ascii: "a")...UInt8(ascii: "f"): c - UInt8(ascii: "a") + 10
+            case UInt8(ascii: "A")...UInt8(ascii: "F"): c - UInt8(ascii: "A") + 10
+            default: nil
+            }
+        }
+        guard nibbles.count == 64 else { return nil }
+        var bytes: [UInt8] = []
+        for i in stride(from: 0, to: 64, by: 2) {
+            guard let high = nibbles[i], let low = nibbles[i + 1] else { return nil }
+            bytes.append(high << 4 | low)
+        }
+        return bytes
     }
 
     static func constantTimeEqual(_ a: [UInt8], _ b: [UInt8]) -> Bool {
